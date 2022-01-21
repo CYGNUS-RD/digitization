@@ -13,15 +13,15 @@
 
 'z_vox_dim'             : 0.1,       # z voxel size in [mm]
 'zcloud'		: 30,        # z dimension of the electron cloud in [mm]
-'x_vox_min'		: 550,      # x voxel min of the electron cloud (voxels in the GEM plane correspond to pixels)
-'x_vox_max'		: 1700,      # x voxel max of the electron cloud (voxels in the GEM plane correspond to pixels)
-'y_vox_min'		: 550,      # y voxel min of the electron cloud (voxels in the GEM plane correspond to pixels)
-'y_vox_max'		: 1700,      # y voxel max of the electron cloud (voxels in the GEM plane correspond to pixels)
+'x_vox_min'		: 1000,      # x voxel min of the electron cloud (voxels in the GEM plane correspond to pixels)
+'x_vox_max'		: 1300,      # x voxel max of the electron cloud (voxels in the GEM plane correspond to pixels)
+'y_vox_min'		: 1000,      # y voxel min of the electron cloud (voxels in the GEM plane correspond to pixels)
+'y_vox_max'		: 1300,      # y voxel max of the electron cloud (voxels in the GEM plane correspond to pixels)
 
 #FIXME
 'z_gem'			: 255.,      # GEM z coordinate [mm] (Note that in Geant4 CYGNO simulation the center of sensitive region is at 255. mm)
 'tag'			: 'MC',
-'noiserun'              : 3944,      # pedestal run to add as background
+'noiserun'              : 4159,      # pedestal run to add as background
 
 'ion_pot'               : 0.0462,    # ionization potential for He/CF4 60/40 [keV]
 'GEM1_HV'               : 440.,      # HV of GEM1
@@ -30,7 +30,7 @@
 
 
 'A'                     : 1.,        # free parameter (total scale factor MC/data) 
-'beta'                  : 1e-5,    # saturation parameter
+'beta'                  : 0.5e-5,    # saturation parameter
 'absorption_l'          : 1000.,     # absorption lenght in [mm]
 'saturation'            : True,     
 
@@ -39,9 +39,9 @@
 'sensor_size'           : 14.976,    # sensor dimension [mm] ORCA Fusion
 'camera_aperture'       : 0.95,
 
-'bckg'                  : True,     # if 'True' background is added
+'bckg'                  : False,     # if 'True' background is added
 'rootfiles'             : True,     # choose input type: True for G4 root iput, False for SRIM txt files
-'events'                : -1,         # number of events to be processed, -1 = all
+'events'                : 3,         # number of events to be processed, -1 = all
 'donotremove'           : True,      # Remove or not the file from the tmp folder
-'randZ'                 : True,      # If true the diffusion is generated uniform in 5-45 cm
+'randZ'                 : False,
 }

@@ -6,17 +6,17 @@
 'diff_coeff_L'          : 0.00978,    # diffusion parameter [mm/sqrt(cm)]^2 for 1 kV
 
 
-'x_dim'			: 350,       # first dimension of the detector
-'y_dim'			: 350,       # second dimension of the detector
+'x_dim'			: 330,       # first dimension of the detector
+'y_dim'			: 330,       # second dimension of the detector
 'x_pix'			: 2304,      # number of pixels in the first dimension
 'y_pix'			: 2304,      # number of pixels in the second dimension
 
 'z_vox_dim'             : 0.1,       # z voxel size in [mm]
-'zcloud'		: 30,        # z dimension of the electron cloud in [mm]
-'x_vox_min'		: 550,      # x voxel min of the electron cloud (voxels in the GEM plane correspond to pixels)
-'x_vox_max'		: 1700,      # x voxel max of the electron cloud (voxels in the GEM plane correspond to pixels)
-'y_vox_min'		: 550,      # y voxel min of the electron cloud (voxels in the GEM plane correspond to pixels)
-'y_vox_max'		: 1700,      # y voxel max of the electron cloud (voxels in the GEM plane correspond to pixels)
+'zcloud'		: 2,        # z dimension of the electron cloud in [mm]
+'x_vox_min'		: 2,      # x voxel min of the electron cloud (voxels in the GEM plane correspond to pixels)
+'x_vox_max'		: 2,      # x voxel max of the electron cloud (voxels in the GEM plane correspond to pixels)
+'y_vox_min'		: 2,      # y voxel min of the electron cloud (voxels in the GEM plane correspond to pixels)
+'y_vox_max'		: 2,      # y voxel max of the electron cloud (voxels in the GEM plane correspond to pixels)
 
 #FIXME
 'z_gem'			: 255.,      # GEM z coordinate [mm] (Note that in Geant4 CYGNO simulation the center of sensitive region is at 255. mm)
@@ -32,7 +32,7 @@
 'A'                     : 1.,        # free parameter (total scale factor MC/data) 
 'beta'                  : 1e-5,    # saturation parameter
 'absorption_l'          : 1000.,     # absorption lenght in [mm]
-'saturation'            : True,     
+'saturation'            : False,     
 
 'photons_per_el'        : 0.07,      # number of photons per electron produced in the avalanche
 'counts_per_photon'     : 2.,        # sensor conversion factor counts/photons
@@ -41,7 +41,7 @@
 
 'bckg'                  : True,     # if 'True' background is added
 'rootfiles'             : True,     # choose input type: True for G4 root iput, False for SRIM txt files
-'events'                : -1,         # number of events to be processed, -1 = all
+'events'                : 490,         # number of events to be processed, -1 = all
 'donotremove'           : True,      # Remove or not the file from the tmp folder
 'randZ'                 : True,      # If true the diffusion is generated uniform in 5-45 cm
 }

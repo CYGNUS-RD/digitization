@@ -43,7 +43,7 @@ def cloud_smearing3D(x_hit,y_hit,z_hit,energyDep_hit,options):
     ## arrays of positions of produced electrons after GEM2
     X=(np.random.normal(loc=(x_hit), scale=np.sqrt(options.diff_const_sigma0T+options.diff_coeff_T*(np.abs(z_hit-options.z_gem))/10.), size=int(nel)))
     Y=(np.random.normal(loc=(y_hit), scale=np.sqrt(options.diff_const_sigma0T+options.diff_coeff_T*(np.abs(z_hit-options.z_gem))/10.), size=int(nel)))
-    Z=(np.random.normal(loc=(z_hit-z_ini), scale=np.sqrt(options.diff_const_sigma0L+options.diff_coeff_L*(np.abs(z_hit-options.z_gem))/10.), size=int(nel)))   
+    Z=(np.random.normal(loc=(z_hit), scale=np.sqrt(options.diff_const_sigma0L+options.diff_coeff_L*(np.abs(z_hit-options.z_gem))/10.), size=int(nel)))   
     #print("distance from the GEM : %f cm"%((np.abs(z_hit-opt.z_gem))/10.))
     return X, Y, Z
 
@@ -61,24 +61,24 @@ def ph_smearing2D(x_hit,y_hit,z_hit,energyDep_hit,options):
 
     
 def Nph_saturation(histo_cloud,options):
-    Nph_array = np.zeros((histo_cloud.GetNbinsX(),histo_cloud.GetNbinsY()))
+    Nph_array = np.zeros((2304,2304))
     Nph_tot = 0
-    for i in range(options.x_vox_min,options.x_vox_max):
-        for j in range(options.y_vox_min,options.y_vox_max):
+    for i in range(0,histo_cloud.GetNbinsX()):
+        for j in range(0,histo_cloud.GetNbinsY()):
             hout = 0
             for k in range(1,histo_cloud.GetNbinsZ()+1):
                 hin = histo_cloud.GetBinContent(i,j,k)
                 nel_in = hin
                 hout += (nel_in * options.A * GEM3_gain)/(1 + options.beta * GEM3_gain  * nel_in) 
-
+                                
             if hout==0 :
                 continue
 
             nmean_ph= hout * omega * options.photons_per_el * options.counts_per_photon     # mean total number of photons
             photons=poisson(nmean_ph)                    # poisson distribution for photons
             n_ph=photons.rvs()  
-            Nph_array[i-1][j-1] = n_ph
-            Nph_tot += Nph_array[i-1][j-1]
+            Nph_array[int(histo_cloud.GetXaxis().GetBinCenter(i))][int(histo_cloud.GetYaxis().GetBinCenter(j))] = n_ph
+            Nph_tot += Nph_array[int(histo_cloud.GetXaxis().GetBinCenter(i))][int(histo_cloud.GetYaxis().GetBinCenter(j))]
             #if hout>0:
             #    print("number final electrons per voxel: %f"%hout)
             
@@ -131,6 +131,7 @@ def SaveEventInfo(info_dict, folder, out):
 
     return None
 
+
 ######################################### MAIN EXECUTION ###########################################
 
 if __name__ == "__main__":
@@ -181,7 +182,7 @@ if __name__ == "__main__":
     theta_ini = np.array([-999], dtype="float32")
     phi_ini = np.array([-999], dtype="float32")
 
-    z_ini = 255.
+    z_ini = 0
 
     if not os.path.exists(opt.outfolder): #CREATING OUTPUT FOLDER
         os.makedirs(opt.outfolder)
@@ -193,8 +194,7 @@ if __name__ == "__main__":
             if infile.endswith('.root'):    #KEEPING .ROOT FILES ONLY
                 
                 #FIXME
-                z_ini = 255.
-                zbins = int(opt.zcloud/opt.z_vox_dim)
+                z_ini = 0
                 rootfile=rt.TFile.Open(opt.infolder+infile)
                 tree=rootfile.Get('nTuple')            #GETTING NTUPLES
             
@@ -265,8 +265,7 @@ if __name__ == "__main__":
                         totev=tree.GetEntries()
                     
 
-                
-                
+    
                 for entry in range(0, totev): #RUNNING ON ENTRIES
                     tree.GetEntry(entry)
                     print(entry)
@@ -294,8 +293,8 @@ if __name__ == "__main__":
 
                     if opt.randZ:
                         opt.z_gem=0
-                        rand = 50 + random.random()*450
-                        X0= tree.x_hits[0]
+                        rand = 50 + random.random()*400
+                        X0= min(tree.x_hits)
                         for ihit in range(0,tree.numhits):
                             x_hits_tr[ihit]-=X0
                             x_hits_tr[ihit]+=rand
@@ -303,8 +302,23 @@ if __name__ == "__main__":
                     #print("Random Diffused")
                     #print(x_hits_tr)
                     #print(opt.z_gem)
-                    histname = "histo_cloud_pic_"+str(run_count)+"_ev"+str(int(entry)) 
-                    histo_cloud = rt.TH3I(histname,"",opt.x_pix,0,opt.x_pix-1,opt.y_pix,0,opt.y_pix-1,zbins,0,zbins)
+                    histname = "histo_cloud_pic_"+str(run_count)+"_ev"+str(int(entry))
+                    
+                                        
+                    yMinCl=1152+(min(tree.y_hits))*opt.y_pix/opt.y_dim-20
+                    yMaxCl=1152+(max(tree.y_hits))*opt.y_pix/opt.y_dim+20
+
+                    zMinCl=1152+(min(tree.z_hits))*opt.x_pix/opt.x_dim-20
+                    zMaxCl=1152+(max(tree.z_hits))*opt.x_pix/opt.x_dim+20
+
+                    xMinCl=((min(x_hits_tr))-10)/opt.z_vox_dim
+                    xMaxCl=((max(x_hits_tr))+10)/opt.z_vox_dim
+
+                    zbins = int((xMaxCl-xMinCl)/opt.z_vox_dim)
+                    
+                    histo_cloud = rt.TH3I(histname,"",int(zMaxCl-zMinCl+1),zMinCl,zMaxCl,int(yMaxCl-yMinCl+1),yMinCl,yMaxCl,int(zbins),xMinCl,xMaxCl)
+
+                                        
                     signal=rt.TH2I('sig_pic_run'+str(run_count)+'_ev'+str(entry), '', opt.x_pix, 0, opt.x_pix-1, opt.y_pix, 0, opt.y_pix-1) 
 
                     #print("created histo_cloud")
@@ -313,7 +327,7 @@ if __name__ == "__main__":
                     if (opt.saturation):
                         tot_el_G2 = 0
                         for ihit in range(0,tree.numhits):
-                            #print("Processing hit %d of %d"%(ihit,tree.numhits))
+                            print("Processing hit %d of %d"%(ihit,tree.numhits))
 
                             if ihit<tree.numhits-1:
                                 proj_track_2D[0]+=np.sqrt((tree.y_hits[ihit+1]-tree.y_hits[ihit])*(tree.y_hits[ihit+1]-tree.y_hits[ihit])+(tree.z_hits[ihit+1]-tree.z_hits[ihit])*(tree.z_hits[ihit+1]-tree.z_hits[ihit]))
@@ -344,11 +358,11 @@ if __name__ == "__main__":
                             S3D = cloud_smearing3D(tree.z_hits[ihit],tree.y_hits[ihit],x_hits_tr[ihit],tree.energyDep_hits[ihit],opt)
                             
                             for j in range(0, len(S3D[0])):
-                                print("%f   %f   %f   %f"%(len(S3D[0]),(0.5*opt.x_dim+S3D[0][j])*opt.x_pix/opt.x_dim,(0.5*opt.y_dim+S3D[1][j])*opt.y_pix/opt.y_dim,(0.5*histo_cloud.GetNbinsZ()*opt.z_vox_dim+S3D[2][j])/opt.z_vox_dim))
-                                histo_cloud.Fill((0.5*opt.x_dim+S3D[0][j])*opt.x_pix/opt.x_dim, (0.5*opt.y_dim+S3D[1][j])*opt.y_pix/opt.y_dim, (0.5*histo_cloud.GetNbinsZ()*opt.z_vox_dim+S3D[2][j])/opt.z_vox_dim )
+                                histo_cloud.Fill((0.5*opt.x_dim+S3D[0][j])*opt.x_pix/opt.x_dim, (0.5*opt.y_dim+S3D[1][j])*opt.y_pix/opt.y_dim, (S3D[2][j])/opt.z_vox_dim) 
+                               # print("Fill Histo  %f   %f  %f"%((0.5*opt.x_dim+S3D[0][j])*opt.x_pix/opt.x_dim,(0.5*opt.y_dim+S3D[1][j])*opt.y_pix/opt.y_dim,(S3D[2][j])/opt.z_vox_dim))
                                 tot_el_G2+=1
                                 
-                        #tot_el_G2 = histo_cloud.Integral()
+                        print(histo_cloud.Integral())
                     
                         # 2d map of photons applying saturation effect
                         result_GEM3 = Nph_saturation(histo_cloud,opt)
@@ -403,6 +417,7 @@ if __name__ == "__main__":
                         #print("tot num of sensor counts after GEM3 without saturation: %d"%(tot_ph_G3))
                                                 
                     background=AddBckg(opt,entry)
+                    np.set_printoptions(threshold=np. inf)
                     total=array2d_Nph+background
                     
                     final_image=rn.array2hist(total, final_image)
@@ -447,7 +462,7 @@ if __name__ == "__main__":
                 content = textfile.readlines() #READ IN TXT FILE
                 tot_el_G2=0
                 tot_ph_G3=0
-                zbins = int(opt.zcloud/opt.z_vox_dim)
+                
 
                 histname = "histo_cloud"+str(run_count)+"_pic_0"
                 #histo_cloud = rt.TH3I(histname,"",opt.x_pix,0,opt.x_pix-1,opt.y_pix,0,opt.y_pix-1,zbins,0,zbins)

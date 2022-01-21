@@ -7,7 +7,6 @@ import time
 import sys
 import numpy as np
 import root_numpy as rn
-import random
 from scipy.stats import expon
 from scipy.stats import poisson
 
@@ -70,9 +69,7 @@ def Nph_saturation(histo_cloud,options):
                 hin = histo_cloud.GetBinContent(i,j,k)
                 nel_in = hin
                 hout += (nel_in * options.A * GEM3_gain)/(1 + options.beta * GEM3_gain  * nel_in) 
-
-            if hout==0 :
-                continue
+                
 
             nmean_ph= hout * omega * options.photons_per_el * options.counts_per_photon     # mean total number of photons
             photons=poisson(nmean_ph)                    # poisson distribution for photons
@@ -89,7 +86,15 @@ def Nph_saturation(histo_cloud,options):
 def AddBckg(options, i):
     bckg_array=np.zeros((options.x_pix,options.y_pix))
     if options.bckg:
-        options.tmpname = "/nfs/cygno2/users/torellis/digitization_NoSat/Ped/histograms_Run%05d.root" % int(options.noiserun)
+        if sw.checkfiletmp(int(options.noiserun)):
+            #options.tmpname = "/tmp/histograms_Run%05d.root" % int(options.noiserun)
+            #options.tmpname = "/mnt/ssdcache/histograms_Run%05d.root" % int(options.noiserun)
+            options.tmpname = "/nfs/cygno/users/dimperig/CYGNO/CYGNO-tmp/histograms_Run%05d.root" % int(options.noiserun)
+            #FIXME
+            #options.tmpname = "/nfs/cygno/users/dimperig/CYGNO/CYGNO-tmp/histograms_Run%05d_cropped.root" % int(options.noiserun)
+        else:
+            print ('Downloading file: ' + sw.swift_root_file(options.tag, int(options.noiserun)))
+            options.tmpname = sw.swift_download_root_file(sw.swift_root_file(options.tag, int(options.noiserun)),int(options.noiserun))
         tmpfile =rt.TFile.Open(options.tmpname)
         tmphist = tmpfile.Get("pic_run%05d_ev%d"% (int(options.noiserun),i))
         bckg_array = rn.hist2array(tmphist) 
@@ -181,7 +186,7 @@ if __name__ == "__main__":
     theta_ini = np.array([-999], dtype="float32")
     phi_ini = np.array([-999], dtype="float32")
 
-    z_ini = 255.
+    z_ini = 0
 
     if not os.path.exists(opt.outfolder): #CREATING OUTPUT FOLDER
         os.makedirs(opt.outfolder)
@@ -209,50 +214,6 @@ if __name__ == "__main__":
                 outtree.Branch("theta_ini", theta_ini, "theta_ini/F")
                 outtree.Branch("phi_ini", phi_ini, "phi_ini/F")
 
-                ### saving track lenth##
-                param_tree = rt.TTree("param_tree","param_tree") #creating a tree
-
-                track_length_3D=np.empty((1),dtype="float32")
-                x_vertex=np.empty((1),dtype="float32")
-                y_vertex=np.empty((1),dtype="float32")
-                z_vertex=np.empty((1),dtype="float32")
-                x_vertex_end=np.empty((1),dtype="float32")
-                y_vertex_end=np.empty((1),dtype="float32")
-                z_vertex_end=np.empty((1),dtype="float32")
-                energy = np.empty((1),dtype="float32")
-                px = np.empty((1),dtype="float32")
-                py = np.empty((1),dtype="float32")
-                pz = np.empty((1),dtype="float32")
-                proj_track_2D= np.empty((1),dtype="float32")
-                theta = np.empty((1),dtype = "float32")
-                phi = np.empty((1),dtype = "float32")
-                nhits_og = np.empty((1),dtype = "int32")
-                xhits_og = np.empty((10000),dtype = "float32")
-                yhits_og = np.empty((10000),dtype = "float32")
-                zhits_og = np.empty((10000),dtype = "float32")
-                EDepHit_og = np.empty((10000),dtype = "float32")
-
-                
-                param_tree.Branch('track_length_3D',track_length_3D,"track_length_3D/F")
-                param_tree.Branch('proj_track_2D',proj_track_2D,"proj_track_2D/F")
-                param_tree.Branch('x_vertex',x_vertex,"x_vertex/F")
-                param_tree.Branch('y_vertex',y_vertex,"y_vertex/F")
-                param_tree.Branch('z_vertex',z_vertex,"z_vertex/F")
-                param_tree.Branch('x_vertex_end',x_vertex_end,"x_vertex_end/F")
-                param_tree.Branch('y_vertex_end',y_vertex_end,"y_vertex_end/F")
-                param_tree.Branch('z_vertex_end',z_vertex_end,"z_vertex_end/F")
-                param_tree.Branch('energy',energy,"energy/F")
-                param_tree.Branch('px',px,"px/F")
-                param_tree.Branch('py',py,"py/F")
-                param_tree.Branch('pz',pz,"pz/F")
-                param_tree.Branch('theta',theta,"theta/F")
-                param_tree.Branch('phi',phi,"phi/F") 
-                param_tree.Branch('nhits_og',nhits_og,"nhits_og/I")
-                param_tree.Branch('xhits_og',xhits_og,"xhits_og[nhits_og]/F")
-                param_tree.Branch('yhits_og',yhits_og,"yhits_og[nhits_og]/F")
-                param_tree.Branch('zhits_og',zhits_og,"zhits_og[nhits_og]/F")
-                param_tree.Branch('EDepHit_og',EDepHit_og,"EDepHit_og[nhits_og]/F")            
-                
                 final_imgs=list();
                 
                 if opt.events==-1:
@@ -265,11 +226,9 @@ if __name__ == "__main__":
                         totev=tree.GetEntries()
                     
 
-                
-                
+    
                 for entry in range(0, totev): #RUNNING ON ENTRIES
                     tree.GetEntry(entry)
-                    print(entry)
                     eventnumber[0] = tree.eventnumber
                     #FIXME
                     particle_type[0] = 0
@@ -279,30 +238,9 @@ if __name__ == "__main__":
                     phi_ini[0] = np.arctan2( (tree.y_hits[1]-tree.y_hits[0]),(tree.z_hits[1]-tree.z_hits[0]) )
                     theta_ini[0] = np.arccos( (tree.x_hits[1]-tree.x_hits[0]) / np.sqrt( np.power((tree.x_hits[1]-tree.x_hits[0]),2) + np.power((tree.y_hits[1]-tree.y_hits[0]),2) + np.power((tree.z_hits[1]-tree.z_hits[0]),2)) )
                     outtree.Fill()
-                    theta[0]=theta_ini[0]
-                    phi[0]=phi_ini[0]
-                    energy[0]=energy_ini[0]
-                    track_length_3D[0]=0.0
-                    proj_track_2D[0]=0.0
-                    nhits_og[0]=tree.numhits
                     final_image=rt.TH2I('pic_run'+str(run_count)+'_ev'+str(entry), '', opt.x_pix, 0, opt.x_pix-1, opt.y_pix, 0, opt.y_pix-1) #smeared track with background
 
-                    x_hits_tr = tree.x_hits
-
-                    #print("Original Info on X")
-                    #print(x_hits_tr)
-
-                    if opt.randZ:
-                        opt.z_gem=0
-                        rand = 50 + random.random()*450
-                        X0= tree.x_hits[0]
-                        for ihit in range(0,tree.numhits):
-                            x_hits_tr[ihit]-=X0
-                            x_hits_tr[ihit]+=rand
-
-                    #print("Random Diffused")
-                    #print(x_hits_tr)
-                    #print(opt.z_gem)
+                   
                     histname = "histo_cloud_pic_"+str(run_count)+"_ev"+str(int(entry)) 
                     histo_cloud = rt.TH3I(histname,"",opt.x_pix,0,opt.x_pix-1,opt.y_pix,0,opt.y_pix-1,zbins,0,zbins)
                     signal=rt.TH2I('sig_pic_run'+str(run_count)+'_ev'+str(entry), '', opt.x_pix, 0, opt.x_pix-1, opt.y_pix, 0, opt.y_pix-1) 
@@ -313,39 +251,13 @@ if __name__ == "__main__":
                     if (opt.saturation):
                         tot_el_G2 = 0
                         for ihit in range(0,tree.numhits):
-                            #print("Processing hit %d of %d"%(ihit,tree.numhits))
+                            print("Processing hit %d of %d"%(ihit,tree.numhits))
 
-                            if ihit<tree.numhits-1:
-                                proj_track_2D[0]+=np.sqrt((tree.y_hits[ihit+1]-tree.y_hits[ihit])*(tree.y_hits[ihit+1]-tree.y_hits[ihit])+(tree.z_hits[ihit+1]-tree.z_hits[ihit])*(tree.z_hits[ihit+1]-tree.z_hits[ihit]))
-                                                          
-                            xhits_og[ihit] = x_hits_tr[ihit]
-                            yhits_og[ihit] = tree.y_hits[ihit]
-                            zhits_og[ihit] = tree.z_hits[ihit]
-                            EDepHit_og[ihit] = tree.energyDep_hits[ihit]
-
-                            track_length_3D[0] += tree.tracklen_hits[ihit]
-                            
-                            if ihit==0:
-                                px[0]= tree.px_particle[0]
-                                py[0]= tree.py_particle[0]
-                                pz[0]= tree.pz_particle[0]
-                                x_vertex[0]= x_hits_tr[0]
-                                y_vertex[0]= (tree.y_vertex_hits[0]+0.5*opt.y_dim)*opt.y_pix/opt.y_dim
-                                z_vertex[0]= (tree.z_vertex_hits[0]+0.5*opt.x_dim)*opt.x_pix/opt.x_dim
-                                
-
-                            if ihit==tree.numhits-1:
-                                x_vertex_end[0]= x_hits_tr[ihit]
-                                y_vertex_end[0]= (tree.y_hits[ihit]+0.5*opt.y_dim)*opt.y_pix/opt.y_dim
-                                z_vertex_end[0]= (tree.z_hits[ihit]+0.5*opt.x_dim)*opt.x_pix/opt.x_dim
-
-                            
                             ## here swapping X with Z beacuse in geant the drift axis is X
-                            S3D = cloud_smearing3D(tree.z_hits[ihit],tree.y_hits[ihit],x_hits_tr[ihit],tree.energyDep_hits[ihit],opt)
+                            S3D = cloud_smearing3D(tree.z_hits[ihit],tree.y_hits[ihit],tree.x_hits[ihit],tree.energyDep_hits[ihit],opt)
                             
                             for j in range(0, len(S3D[0])):
-                                print("%f   %f   %f   %f"%(len(S3D[0]),(0.5*opt.x_dim+S3D[0][j])*opt.x_pix/opt.x_dim,(0.5*opt.y_dim+S3D[1][j])*opt.y_pix/opt.y_dim,(0.5*histo_cloud.GetNbinsZ()*opt.z_vox_dim+S3D[2][j])/opt.z_vox_dim))
-                                histo_cloud.Fill((0.5*opt.x_dim+S3D[0][j])*opt.x_pix/opt.x_dim, (0.5*opt.y_dim+S3D[1][j])*opt.y_pix/opt.y_dim, (0.5*histo_cloud.GetNbinsZ()*opt.z_vox_dim+S3D[2][j])/opt.z_vox_dim )
+                                histo_cloud.Fill((0.5*opt.x_dim+S3D[0][j])*opt.x_pix/opt.x_dim, (0.5*opt.y_dim+S3D[1][j])*opt.y_pix/opt.y_dim, (0.5*histo_cloud.GetNbinsZ()*opt.z_vox_dim+S3D[2][j])/opt.z_vox_dim ) 
                                 tot_el_G2+=1
                                 
                         #tot_el_G2 = histo_cloud.Integral()
@@ -363,37 +275,10 @@ if __name__ == "__main__":
                     ## no saturation
                     else:
                         tot_ph_G3=0
-                        track_length_3D[0]=0    
-                        
                         for ihit in range(0,tree.numhits):
                             ## here swapping X with Z beacuse in geant the drift axis is X
-                            S2D = ph_smearing2D(tree.z_hits[ihit],tree.y_hits[ihit],x_hits_tr[ihit],tree.energyDep_hits[ihit],opt)
-
-                            if ihit<tree.numhits-1:
-                                proj_track_2D[0]+=np.sqrt((tree.y_hits[ihit+1]-tree.y_hits[ihit])*(tree.y_hits[ihit+1]-tree.y_hits[ihit])+(tree.z_hits[ihit+1]-tree.z_hits[ihit])*(tree.z_hits[ihit+1]-tree.z_hits[ihit]))
-                                                          
-                            xhits_og[ihit] = x_hits_tr[ihit]
-                            yhits_og[ihit] = tree.y_hits[ihit]
-                            zhits_og[ihit] = tree.z_hits[ihit]
-                            EDepHit_og[ihit] = tree.energyDep_hits[ihit]
-
-                            track_length_3D[0] += tree.tracklen_hits[ihit]
+                            S2D = ph_smearing2D(tree.z_hits[ihit],tree.y_hits[ihit],tree.x_hits[ihit],tree.energyDep_hits[ihit],opt)
                             
-                            if ihit==0:
-                                px[0]= tree.px_particle[0]
-                                py[0]= tree.py_particle[0]
-                                pz[0]= tree.pz_particle[0]
-                                x_vertex[0]= x_hits_tr[0]
-                                y_vertex[0]= (tree.y_vertex_hits[0]+0.5*opt.y_dim)*opt.y_pix/opt.y_dim
-                                z_vertex[0]= (tree.z_vertex_hits[0]+0.5*opt.x_dim)*opt.x_pix/opt.x_dim
-                                
-
-                            if ihit==tree.numhits-1:
-                                x_vertex_end[0]= x_hits_tr[ihit]
-                                y_vertex_end[0]= (tree.y_hits[ihit]+0.5*opt.y_dim)*opt.y_pix/opt.y_dim
-                                z_vertex_end[0]= (tree.z_hits[ihit]+0.5*opt.x_dim)*opt.x_pix/opt.x_dim
-
-
                             for t in range(0, len(S2D[0])):
                                 tot_ph_G3+=1
 
@@ -401,19 +286,17 @@ if __name__ == "__main__":
                         array2d_Nph=rn.hist2array(signal)
                         array2d_Nph = array2d_Nph 
                         #print("tot num of sensor counts after GEM3 without saturation: %d"%(tot_ph_G3))
-                                                
+
+
                     background=AddBckg(opt,entry)
                     total=array2d_Nph+background
-                    
+
                     final_image=rn.array2hist(total, final_image)
                     outfile.cd()
                     final_image.Write()            
-                    param_tree.Fill()
-                                        
-                param_tree.Write()
+
                 outfile.cd('event_info') 
                 outtree.Write()
-                
                 print('COMPLETED RUN %d'%(run_count))
                 run_count+=1
                 #outfile.Close()
@@ -450,7 +333,7 @@ if __name__ == "__main__":
                 zbins = int(opt.zcloud/opt.z_vox_dim)
 
                 histname = "histo_cloud"+str(run_count)+"_pic_0"
-                #histo_cloud = rt.TH3I(histname,"",opt.x_pix,0,opt.x_pix-1,opt.y_pix,0,opt.y_pix-1,zbins,0,zbins)
+                histo_cloud = rt.TH3I(histname,"",opt.x_pix,0,opt.x_pix-1,opt.y_pix,0,opt.y_pix-1,zbins,0,zbins)
                 signal=rt.TH2I('sig_run'+str(run_count)+'_ev0', '', opt.x_pix, 0, opt.x_pix-1, opt.y_pix, 0, opt.y_pix-1) #smeared track with background
                 final_image=rt.TH2I('pic_run'+str(run_count)+'_ev0', '', opt.x_pix, 0, opt.x_pix-1, opt.y_pix, 0, opt.y_pix-1) #smeared track with background
                 
@@ -644,4 +527,3 @@ if __name__ == "__main__":
         sw.swift_rm_root_file(opt.tmpname)
     print('\n')
     print('Generation took %d seconds'%(t1-t0))
-
