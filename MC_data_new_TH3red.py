@@ -293,7 +293,7 @@ if __name__ == "__main__":
 
                     if opt.randZ:
                         opt.z_gem=0
-                        rand = 50 + random.random()*400
+                        rand = opt.randz_min + random.random()*(opt.randz_max-opt.randz_min)
                         X0= min(tree.x_hits)
                         for ihit in range(0,tree.numhits):
                             x_hits_tr[ihit]-=X0
