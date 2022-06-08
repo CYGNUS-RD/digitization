@@ -62,6 +62,12 @@ def _smear_vectorized(axis_hit, axis_sigma, nel):
         ]
     )
 
+def _smear(axis_hit, axis_sigma, nph):
+    return np.random.normal(
+        loc=(axis_hit),
+        scale=axis_sigma,
+        size=int(nph),
+    )
 
 def cloud_smearing3D_vectorized(x_hit, y_hit, z_hit, energyDep_hit, options):
 
@@ -102,31 +108,20 @@ def NelGEM2(energyDep, z_hit, options):
 
 
 def ph_smearing2D(x_hit, y_hit, z_hit, energyDep_hit, options):
-    X = list()
-    Y = list()
-    X *= 0
-    Y *= 0
-    ## electrons in GEM2
+
+    # Electrons in GEM2
     nel = NelGEM2(energyDep_hit, z_hit, options)
-    ## photons in GEM3
+    
+    # Photons in GEM3
     nph = nel * GEM3_gain * omega * options.photons_per_el * options.counts_per_photon
-    ## arrays of positions of produced photons
-    X = np.random.normal(
-        loc=(x_hit),
-        scale=np.sqrt(
-            options.diff_const_sigma0T
-            + options.diff_coeff_T * (np.abs(z_hit - options.z_gem)) / 10.0
-        ),
-        size=int(nph),
-    )
-    Y = np.random.normal(
-        loc=(y_hit),
-        scale=np.sqrt(
-            options.diff_const_sigma0T
-            + options.diff_coeff_T * (np.abs(z_hit - options.z_gem)) / 10.0
-        ),
-        size=int(nph),
-    )
+
+    # Support values computed 
+    dz = np.abs(z_hit - options.z_gem)
+    sigma = _compute_sigma(options.diff_const_sigma0T, options.diff_coeff_T, dz)
+
+    # arrays of positions of produced photons
+    X = _smear(x_hit, sigma, nph)
+    Y = _smear(y_hit, sigma, nph) 
     return X, Y
 
 
