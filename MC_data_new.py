@@ -46,26 +46,21 @@ def NelGEM2_vectorized(energyDep, z_hit, options):
     return np.round(n_tot_el)
 
 
+def compute_sigma(diff_const, diff_coeff, dz):
+    return np.sqrt(diff_const + diff_coeff * dz / 10.0)
+
+
 def cloud_smearing3D_vectorized(x_hit, y_hit, z_hit, energyDep_hit, options):
 
     nel = NelGEM2_vectorized(energyDep_hit, z_hit, options)
 
-    X = np.array([])
-    Y = np.array([])
-    Z = np.array([])
+    X, Y, Z = np.array([]), np.array([]), np.array([])
 
-    sigma_x = np.sqrt(
-        options.diff_const_sigma0T
-        + options.diff_coeff_T * (np.abs(z_hit - options.z_gem)) / 10.0
-    )
-    sigma_y = np.sqrt(
-        options.diff_const_sigma0T
-        + options.diff_coeff_T * (np.abs(z_hit - options.z_gem)) / 10.0
-    )
-    sigma_z = np.sqrt(
-        options.diff_const_sigma0L
-        + options.diff_coeff_L * (np.abs(z_hit - options.z_gem)) / 10.0
-    )
+    dz = np.abs(z_hit - options.z_gem)
+    sigma_x = compute_sigma(options.diff_const_sigma0T, options.diff_coeff_T, dz)
+    sigma_y = compute_sigma(options.diff_const_sigma0T, options.diff_coeff_T, dz)
+    sigma_z = compute_sigma(options.diff_const_sigma0L, options.diff_coeff_L, dz)
+
 
     if isinstance(nel, float):
         X = np.concatenate(
