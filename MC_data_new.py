@@ -1,10 +1,8 @@
 import ROOT as rt
-import multiprocessing as mp
 import os
 import math
 import optparse
 import time
-import sys
 import numpy as np
 import root_numpy as rn
 import random
