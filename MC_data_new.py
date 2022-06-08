@@ -1,18 +1,16 @@
-import ROOT as rt
 import os
 import math
-import optparse
 import time
+import random
+import optparse
+
 import numpy as np
 import root_numpy as rn
-import random
-from scipy.stats import expon
-from scipy.stats import poisson
-import math
+import ROOT as rt
+from scipy.stats import expon, poisson
 
 # sys.path.append("../reconstruction")
 import swiftlib as sw
-
 from rebin import *
 
 
