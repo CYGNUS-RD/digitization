@@ -180,7 +180,6 @@ def SaveValues(par, out):
 
     out.cd()
     out.mkdir("param_dir")
-    # gDirectory.pwd()
     rt.gDirectory.ls()
     out.cd("param_dir")
 
@@ -191,7 +190,6 @@ def SaveValues(par, out):
             h.Write()
     out.cd()
 
-    return None
 
 
 def round_up_to_even(f):
