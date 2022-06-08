@@ -189,31 +189,6 @@ def ph_smearing2D(x_hit, y_hit, z_hit, energyDep_hit, options):
     return X, Y
 
 
-# Nph_saturation() is not needed anymore: now we use Nph_saturation_vectorized()
-#
-# def Nph_saturation(histo_cloud,options,xmin_vox,xmax_vox,ymin_vox,ymax_vox,zmin_vox,zmax_vox):
-#    Nph_array = np.zeros((histo_cloud.GetNbinsX(),histo_cloud.GetNbinsY()))
-#    Nph_tot = 0
-#    for i in range(xmin_vox, xmax_vox):
-#        for j in range(ymin_vox,ymax_vox):
-#            hout = 0
-#            for k in range(zmin_vox,zmax_vox):
-#                hin = histo_cloud.GetBinContent(i,j,k)
-#                nel_in = hin
-#                hout += (nel_in * options.A * GEM3_gain)/(1 + options.beta * GEM3_gain  * nel_in)
-#
-#
-#            nmean_ph= hout * omega * options.photons_per_el * options.counts_per_photon     # mean total number of photons
-#            photons=poisson(nmean_ph)                    # poisson distribution for photons
-#            n_ph=photons.rvs()
-#            Nph_array[i-1][j-1] = n_ph
-#            Nph_tot += Nph_array[i-1][j-1]
-#            #if hout>0:
-#            #    print("number final electrons per voxel: %f"%hout)
-#
-#    return Nph_tot, Nph_array
-
-
 def Nph_saturation_vectorized(histo_cloud, options):
     Nph_array = np.zeros((histo_cloud.shape[0], histo_cloud.shape[1]))
     Nph_tot = 0
@@ -279,24 +254,6 @@ def SaveValues(par, out):
             h.SetBinContent(1, v)
             h.Write()
     out.cd()
-
-    return None
-
-
-def SaveEventInfo(
-    info_dict, folder, out
-):  # THIS FUNCTION IS CURRENTLY NOT USED, MAYBE IT SHOULD BE REMOVED
-
-    out.cd()
-    # gDirectory.pwd()
-    out.cd("event_info")
-
-    for k, v in info_dict.items():
-        h = rt.TH1F(k, "", 1, 0, 1)
-        h.SetBinContent(1, v)
-        h.Write()
-    out.cd()
-    info_dict.clear()
 
     return None
 
@@ -532,21 +489,6 @@ if __name__ == "__main__":
 
                 ## with saturation
                 if opt.saturation:
-
-                    # non-vectorized smearing
-                    # S3D_x=np.array([])
-                    # S3D_y=np.array([])
-                    # S3D_z=np.array([])
-                    # for ihit in range(0,tree.numhits):
-                    #    #print("Processing hit %d of %d"%(ihit,tree.numhits))
-                    #    ## here swapping X with Z beacuse in geant the drift axis is X
-                    #    if (opt.NR == True):
-                    #        S3D = cloud_smearing3D(x_hits_tr[ihit],tree.y_hits[ihit],tree.z_hits[ihit],tree.energyDep_hits[ihit],opt)
-                    #    else:
-                    #        S3D = cloud_smearing3D(tree.z_hits[ihit],tree.y_hits[ihit],x_hits_tr[ihit],tree.energyDep_hits[ihit],opt)
-                    #    S3D_x=np.append(S3D_x, S3D[0])
-                    #    S3D_y=np.append(S3D_y, S3D[1])
-                    #    S3D_z=np.append(S3D_z, S3D[2])
 
                     # vectorized smearing
                     # if ER file need to swapp X with Z beacuse in geant the drift axis is X
