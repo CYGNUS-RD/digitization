@@ -50,7 +50,7 @@ def _compute_sigma(diff_const, diff_coeff, dz):
     return np.sqrt(diff_const + diff_coeff * dz / 10.0)
 
 
-def _init_axis(axis_hit, axis_sigma, nel):
+def _smear_vectorized(axis_hit, axis_sigma, nel):
     if isinstance(nel, float):
         return np.concatenate(
             [np.random.normal(loc=(axis_hit), scale=axis_sigma, size=int(nel))]
@@ -72,9 +72,9 @@ def cloud_smearing3D_vectorized(x_hit, y_hit, z_hit, energyDep_hit, options):
     sigma_y = _compute_sigma(options.diff_const_sigma0T, options.diff_coeff_T, dz)
     sigma_z = _compute_sigma(options.diff_const_sigma0L, options.diff_coeff_L, dz)
 
-    X = _init_axis(x_hit, sigma_x, nel)
-    Y = _init_axis(y_hit, sigma_y, nel)
-    Z = _init_axis(z_hit - z_ini, sigma_z, nel)
+    X = _smear_vectorized(x_hit, sigma_x, nel)
+    Y = _smear_vectorized(y_hit, sigma_y, nel)
+    Z = _smear_vectorized(z_hit - z_ini, sigma_z, nel)
 
     return X, Y, Z
 
@@ -99,44 +99,6 @@ def NelGEM2(energyDep, z_hit, options):
     n_tot_el = n_el_oneGEM * GEM2_gain * extraction_eff_GEM2
 
     return n_tot_el
-
-
-def cloud_smearing3D(x_hit, y_hit, z_hit, energyDep_hit, options):
-    X = list()
-    Y = list()
-    Z = list()
-    X *= 0
-    Y *= 0
-    Z *= 0
-    nel = NelGEM2(energyDep_hit, z_hit, options)
-
-    ## arrays of positions of produced electrons after GEM2
-    X = np.random.normal(
-        loc=(x_hit),
-        scale=np.sqrt(
-            options.diff_const_sigma0T
-            + options.diff_coeff_T * (np.abs(z_hit - options.z_gem)) / 10.0
-        ),
-        size=int(nel),
-    )
-    Y = np.random.normal(
-        loc=(y_hit),
-        scale=np.sqrt(
-            options.diff_const_sigma0T
-            + options.diff_coeff_T * (np.abs(z_hit - options.z_gem)) / 10.0
-        ),
-        size=int(nel),
-    )
-    Z = np.random.normal(
-        loc=(z_hit - z_ini),
-        scale=np.sqrt(
-            options.diff_const_sigma0L
-            + options.diff_coeff_L * (np.abs(z_hit - options.z_gem)) / 10.0
-        ),
-        size=int(nel),
-    )
-    # print("distance from the GEM : %f cm"%((np.abs(z_hit-opt.z_gem))/10.))
-    return X, Y, Z
 
 
 def ph_smearing2D(x_hit, y_hit, z_hit, energyDep_hit, options):
