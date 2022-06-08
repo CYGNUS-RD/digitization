@@ -46,51 +46,35 @@ def NelGEM2_vectorized(energyDep, z_hit, options):
     return np.round(n_tot_el)
 
 
-def compute_sigma(diff_const, diff_coeff, dz):
+def _compute_sigma(diff_const, diff_coeff, dz):
     return np.sqrt(diff_const + diff_coeff * dz / 10.0)
+
+
+def _init_axis(axis_hit, axis_sigma, nel):
+    if isinstance(nel, float):
+        return np.concatenate(
+            [np.random.normal(loc=(axis_hit), scale=axis_sigma, size=int(nel))]
+        )
+    return np.concatenate(
+        [
+            np.random.normal(loc=(x_hit_i), scale=sigma_i, size=int(nel_i))
+            for x_hit_i, sigma_i, nel_i in zip(axis_hit, axis_sigma, nel)
+        ]
+    )
 
 
 def cloud_smearing3D_vectorized(x_hit, y_hit, z_hit, energyDep_hit, options):
 
     nel = NelGEM2_vectorized(energyDep_hit, z_hit, options)
 
-    X, Y, Z = np.array([]), np.array([]), np.array([])
-
     dz = np.abs(z_hit - options.z_gem)
-    sigma_x = compute_sigma(options.diff_const_sigma0T, options.diff_coeff_T, dz)
-    sigma_y = compute_sigma(options.diff_const_sigma0T, options.diff_coeff_T, dz)
-    sigma_z = compute_sigma(options.diff_const_sigma0L, options.diff_coeff_L, dz)
+    sigma_x = _compute_sigma(options.diff_const_sigma0T, options.diff_coeff_T, dz)
+    sigma_y = _compute_sigma(options.diff_const_sigma0T, options.diff_coeff_T, dz)
+    sigma_z = _compute_sigma(options.diff_const_sigma0L, options.diff_coeff_L, dz)
 
-
-    if isinstance(nel, float):
-        X = np.concatenate(
-            [np.random.normal(loc=(x_hit), scale=sigma_x, size=int(nel))]
-        )
-        Y = np.concatenate(
-            [np.random.normal(loc=(y_hit), scale=sigma_y, size=int(nel))]
-        )
-        Z = np.concatenate(
-            [np.random.normal(loc=(z_hit - z_ini), scale=sigma_z, size=int(nel))]
-        )
-    else:
-        X = np.concatenate(
-            [
-                np.random.normal(loc=(x_hit_i), scale=sigma_i, size=int(nel_i))
-                for i, (x_hit_i, sigma_i, nel_i) in enumerate(zip(x_hit, sigma_x, nel))
-            ]
-        )
-        Y = np.concatenate(
-            [
-                np.random.normal(loc=(y_hit_i), scale=sigma_i, size=int(nel_i))
-                for i, (y_hit_i, sigma_i, nel_i) in enumerate(zip(y_hit, sigma_y, nel))
-            ]
-        )
-        Z = np.concatenate(
-            [
-                np.random.normal(loc=(z_hit_i - z_ini), scale=sigma_i, size=int(nel_i))
-                for i, (z_hit_i, sigma_i, nel_i) in enumerate(zip(z_hit, sigma_z, nel))
-            ]
-        )
+    X = _init_axis(x_hit, sigma_x, nel)
+    Y = _init_axis(y_hit, sigma_y, nel)
+    Z = _init_axis(z_hit - z_ini, sigma_z, nel)
 
     return X, Y, Z
 
