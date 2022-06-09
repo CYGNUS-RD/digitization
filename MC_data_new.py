@@ -438,18 +438,11 @@ if __name__ == "__main__":
             param_tree.Branch("zhits_og", zhits_og, "zhits_og[nhits_og]/F")
             param_tree.Branch("EDepHit_og", EDepHit_og, "EDepHit_og[nhits_og]/F")
 
-            final_imgs = list()
+            max_events = tree.GetEntries()
+            totev = max_events if opt.events == -1 else opt.events
+            totev = min(totev, max_events)
 
-            if opt.events == -1:
-                totev = tree.GetEntries()
-            else:
-
-                if opt.events <= tree.GetEntries():
-                    totev = opt.events
-                else:
-                    totev = tree.GetEntries()
-
-            for entry in range(0, totev):  # RUNNING ON ENTRIES
+            for entry in range(totev):  # RUNNING ON ENTRIES
                 tree.GetEntry(entry)
 
                 # add random Z to tracks
@@ -537,12 +530,12 @@ if __name__ == "__main__":
 
                 ## with saturation
                 if opt.saturation:
-                    array2d_Nph = compute_cmos_without_saturation(
+                    array2d_Nph = compute_cmos_with_saturation(
                         xhits_og, yhits_og, zhits_og, EDepHit_og, opt
                     )
                 ## no saturation
                 else:
-                    array2d_Nph = compute_cmos_with_saturation(
+                    array2d_Nph = compute_cmos_without_saturation(
                         xhits_og, yhits_og, zhits_og, EDepHit_og, opt
                     )
 
