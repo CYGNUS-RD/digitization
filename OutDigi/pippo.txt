@@ -1,0 +1,9 @@
+_Vign is only vignetting
+
+_Vign_NewFlu_0  is vignetting + fluctuation of photons before calculate sensor counting
+
+_Vign_NewFlu_0_300rad is vignetting + fluctuation of photons before calculate sensor counting + production within 300 pixels from the center
+
+_Vign_NewFlu_8Per_300rad  is vignetting + fluctuation of photons before calculate sensor counting + production within 300 pixels from the center + 8 percent gaussian fluctuation on hout
+
+

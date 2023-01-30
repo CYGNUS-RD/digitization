@@ -7,14 +7,70 @@ import time
 import sys
 import numpy as np
 import root_numpy as rn
+import random
 from scipy.stats import expon
 from scipy.stats import poisson
+import math
 
 #sys.path.append("../reconstruction")
 import swiftlib as sw
 
+from rebin import * 
+
 
 ## FUNCTIONS DEFINITION
+
+def NelGM1_vectorized(N_ioniz_el):
+    n_el_oneGEM=N_ioniz_el*0
+    if isinstance(N_ioniz_el, int):   # in case there is onyl one hit (very low energy)
+        for j in range(0,int(round(N_ioniz_el))):
+                nsec = expon(loc=0,scale=GEM1_gain).rvs()*extraction_eff_GEM1
+                n_el_oneGEM += nsec
+                n_el_oneGEM=N_ioniz_el*0
+    else:
+        for i, n in enumerate(N_ioniz_el):
+            for j in range(0,int(round(N_ioniz_el[i]))):
+                nsec = expon(loc=0,scale=GEM1_gain).rvs()*extraction_eff_GEM1
+                n_el_oneGEM[i] += nsec
+
+    return n_el_oneGEM
+
+
+def NelGEM2_vectorized(energyDep,z_hit,options):
+    n_ioniz_el=energyDep/options.ion_pot
+    drift_l = np.abs(z_hit-options.z_gem)
+    n_ioniz_el_mean = np.abs(n_ioniz_el*np.exp(-drift_l/options.absorption_l))
+    poisson_distr = lambda x: poisson(x).rvs()
+    n_ioniz_el = poisson_distr(n_ioniz_el_mean)
+
+    # total number of secondary electrons considering the gain in the 2nd GEM foil
+    n_tot_el=NelGM1_vectorized(n_ioniz_el)*GEM2_gain*extraction_eff_GEM2
+
+    return np.round(n_tot_el)
+
+
+def cloud_smearing3D_vectorized(x_hit,y_hit,z_hit,energyDep_hit, options):
+
+    nel=NelGEM2_vectorized(energyDep_hit,z_hit, options)
+
+    X=np.array([])
+    Y=np.array([])
+    Z=np.array([])
+
+    sigma_x = np.sqrt(options.diff_const_sigma0T+options.diff_coeff_T*(np.abs(z_hit-options.z_gem))/10.)
+    sigma_y = np.sqrt(options.diff_const_sigma0T+options.diff_coeff_T*(np.abs(z_hit-options.z_gem))/10.)
+    sigma_z = np.sqrt(options.diff_const_sigma0L+options.diff_coeff_L*(np.abs(z_hit-options.z_gem))/10.)
+
+    if isinstance(nel, float):
+        X = np.concatenate([np.random.normal(loc=(x_hit), scale=sigma_x, size=int(nel)) ])
+        Y = np.concatenate([np.random.normal(loc=(y_hit), scale=sigma_y, size=int(nel)) ])
+        Z = np.concatenate([np.random.normal(loc=(z_hit-z_ini), scale=sigma_z, size=int(nel)) ])
+    else:
+        X = np.concatenate([np.random.normal(loc=(x_hit_i), scale=sigma_i, size=int(nel_i)) for i, (x_hit_i, sigma_i, nel_i) in enumerate(zip(x_hit, sigma_x, nel))])
+        Y = np.concatenate([np.random.normal(loc=(y_hit_i), scale=sigma_i, size=int(nel_i)) for i, (y_hit_i, sigma_i, nel_i) in enumerate(zip(y_hit, sigma_y, nel))])
+        Z = np.concatenate([np.random.normal(loc=(z_hit_i-z_ini), scale=sigma_i, size=int(nel_i)) for i, (z_hit_i, sigma_i, nel_i) in enumerate(zip(z_hit, sigma_z, nel))])
+
+    return X, Y, Z
 
 def NelGEM2(energyDep,z_hit,options):
     n_ioniz_el=energyDep/options.ion_pot
@@ -30,7 +86,6 @@ def NelGEM2(energyDep,z_hit,options):
 
     # total number of secondary electrons considering the gain in the 2nd GEM foil
     n_tot_el=n_el_oneGEM*GEM2_gain*extraction_eff_GEM2
-
 
     return n_tot_el
 
@@ -58,28 +113,29 @@ def ph_smearing2D(x_hit,y_hit,z_hit,energyDep_hit,options):
     Y=(np.random.normal(loc=(y_hit), scale=np.sqrt(options.diff_const_sigma0T+options.diff_coeff_T*(np.abs(z_hit-options.z_gem))/10.), size=int(nph)))
     return X, Y
 
-    
-def Nph_saturation(histo_cloud,options,xmin_vox,xmax_vox,ymin_vox,ymax_vox,zmin_vox,zmax_vox):
-    Nph_array = np.zeros((histo_cloud.GetNbinsX(),histo_cloud.GetNbinsY()))
-    Nph_tot = 0
-    for i in range(xmin_vox, xmax_vox):
-        for j in range(ymin_vox,ymax_vox):
-            hout = 0
-            for k in range(zmin_vox,zmax_vox):
-                hin = histo_cloud.GetBinContent(i,j,k)
-                nel_in = hin
-                hout += (nel_in * options.A * GEM3_gain)/(1 + options.beta * GEM3_gain  * nel_in) 
-                
-
-            nmean_ph= hout * omega * options.photons_per_el * options.counts_per_photon     # mean total number of photons
-            photons=poisson(nmean_ph)                    # poisson distribution for photons
-            n_ph=photons.rvs()  
-            Nph_array[i-1][j-1] = n_ph
-            Nph_tot += Nph_array[i-1][j-1]
-            #if hout>0:
-            #    print("number final electrons per voxel: %f"%hout)
-            
-    return Nph_tot, Nph_array
+# Nph_saturation() is not needed anymore: now we use Nph_saturation_vectorized() 
+#
+#def Nph_saturation(histo_cloud,options,xmin_vox,xmax_vox,ymin_vox,ymax_vox,zmin_vox,zmax_vox):
+#    Nph_array = np.zeros((histo_cloud.GetNbinsX(),histo_cloud.GetNbinsY()))
+#    Nph_tot = 0
+#    for i in range(xmin_vox, xmax_vox):
+#        for j in range(ymin_vox,ymax_vox):
+#            hout = 0
+#            for k in range(zmin_vox,zmax_vox):
+#                hin = histo_cloud.GetBinContent(i,j,k)
+#                nel_in = hin
+#                hout += (nel_in * options.A * GEM3_gain)/(1 + options.beta * GEM3_gain  * nel_in) 
+#                
+#
+#            nmean_ph= hout * omega * options.photons_per_el * options.counts_per_photon     # mean total number of photons
+#            photons=poisson(nmean_ph)                    # poisson distribution for photons
+#            n_ph=photons.rvs()  
+#            Nph_array[i-1][j-1] = n_ph
+#            Nph_tot += Nph_array[i-1][j-1]
+#            #if hout>0:
+#            #    print("number final electrons per voxel: %f"%hout)
+#            
+#    return Nph_tot, Nph_array
 
 
     
@@ -102,17 +158,17 @@ def Nph_saturation_vectorized(histo_cloud,options):
 def AddBckg(options, i):
     bckg_array=np.zeros((options.x_pix,options.y_pix))
     if options.bckg:
-        if sw.checkfiletmp(int(options.noiserun)):
-            #options.tmpname = "/tmp/histograms_Run%05d.root" % int(options.noiserun)
-            #options.tmpname = "/mnt/ssdcache/histograms_Run%05d.root" % int(options.noiserun)
-            options.tmpname = "/nfs/cygno/users/dimperig/CYGNO/CYGNO-tmp/histograms_Run%05d.root" % int(options.noiserun)
+        if os.path.exists("%s/histograms_Run%05d.root" % (options.bckg_path,int(options.noiserun))):
+            options.tmpname = "%s/histograms_Run%05d.root" % (options.bckg_path,int(options.noiserun))
+        elif sw.checkfiletmp(int(options.noiserun)):
             #FIXME
-            #options.tmpname = "/nfs/cygno/users/dimperig/CYGNO/CYGNO-tmp/histograms_Run%05d_cropped.root" % int(options.noiserun)
+            options.tmpname = "/tmp/histograms_Run%05d.root" % int(options.noiserun)
         else:
             print ('Downloading file: ' + sw.swift_root_file(options.tag, int(options.noiserun)))
             options.tmpname = sw.swift_download_root_file(sw.swift_root_file(options.tag, int(options.noiserun)),int(options.noiserun))
         tmpfile =rt.TFile.Open(options.tmpname)
-        tmphist = tmpfile.Get("pic_run%05d_ev%d"% (int(options.noiserun),i))
+        n_pics = len([k.GetName() for k in tmpfile.GetListOfKeys() if 'pic' in k.GetName()])
+        tmphist = tmpfile.Get("pic_run%05d_ev%d"% (int(options.noiserun),i%n_pics))
         bckg_array = rn.hist2array(tmphist) 
     #print(bckg_array)
     
@@ -129,15 +185,15 @@ def SaveValues(par, out):
     out.cd('param_dir')
     
     for k,v in par.items():
-        if (k!='tag'):
+        if (k!='tag' and k!='bckg_path'):
             h=rt.TH1F(k, '', 1, 0, 1)
-            h.SetBinContent(1, v)
+            #h.SetBinContent(1, v)
             h.Write()
     out.cd()
 
     return None
 
-def SaveEventInfo(info_dict, folder, out):  # THIS FUNCTION IS CURRENTLY NOT USED 
+def SaveEventInfo(info_dict, folder, out):  # THIS FUNCTION IS CURRENTLY NOT USED, MAYBE IT SHOULD BE REMOVED 
     
     out.cd()
     #gDirectory.pwd()
@@ -151,6 +207,20 @@ def SaveEventInfo(info_dict, folder, out):  # THIS FUNCTION IS CURRENTLY NOT USE
     info_dict.clear()
 
     return None
+
+def round_up_to_even(f):
+    return math.ceil(f / 2.) * 2
+
+def TrackVignetting (arrTr,xpix,ypix,VignMap):
+
+    for i in range(0,ypix):
+        for j in range(0,xpix):
+            if(arrTr[i][j]!=0):
+
+                arrTr[i][j]=round(arrTr[i][j]*VignMap.GetBinContent(VignMap.GetXaxis().FindBin(j),VignMap.GetYaxis().FindBin(i)),0)
+
+    return arrTr
+
 
 ######################################### MAIN EXECUTION ###########################################
 
@@ -166,439 +236,369 @@ if __name__ == "__main__":
     (opt, args) = parser.parse_args()
 
     config = open(args[0], "r")         #GET CONFIG FILE
-    params_with_list = eval(config.read())         #READ CONFIG FILE
+    params = eval(config.read())        #READ CONFIG FILE
 
+    for k,v in params.items():
+        setattr(opt, k, v)
 
-    # PREPARE A LOOP OVER THE CONFIG PARAMETERS. SINGLE VALUES ARE INTERPRETED AS FIXED VALUES. 
-    scan_par_list=[]
-    scan_length=1       
-
-    # CHECK WHICH PARAMETERS ARE IN FORM OF LISTS
-    for k,v in params_with_list.items():
-        if isinstance(v, list):
-            scan_par_list.append(k)
-            scan_length=len(v)   # A CHECK ON THE LENGTH OF LISTS SHOULD BE DONE -> ALL LIST MUST HAVE THE SAME LENGTH 
+    ## fit from Fernando Amaro's single GEM gain measurement
+    GEM1_gain = 0.0347*np.exp((0.0209)*opt.GEM1_HV)
+    GEM2_gain = 0.0347*np.exp((0.0209)*opt.GEM2_HV)
+    GEM3_gain = 0.0347*np.exp((0.0209)*opt.GEM3_HV)
+    print("GEM1_gain = %d"%GEM1_gain)
+    print("GEM2_gain = %d"%GEM2_gain)
+    print("GEM3_gain = %d"%GEM3_gain)
     
-    # TURN NON-LIST INTO TRIVIAL LIST: A LIST WHERE EACH ELEMENT IS THE SAME
-    for k,v in params_with_list.items():
-        if k not in scan_par_list:
-            params_with_list[k]=[v]*scan_length
-        elif k in scan_par_list:
-            params_with_list[k]=v
-   
-    # NOW SCAN OVER MULTIPLE PARAMETERS
+    ## dividing Fernando's to Francesco&Karolina's single GEM gain measurement
+    extraction_eff_GEM1 = 0.87319885*np.exp(-0.0020000000*opt.GEM1_HV)
+    extraction_eff_GEM2 = 0.87319885*np.exp(-0.0020000000*opt.GEM2_HV)
+    extraction_eff_GEM3 = 0.87319885*np.exp(-0.0020000000*opt.GEM3_HV)
+    print("extraction eff GEM1 = %f" % extraction_eff_GEM1 )
+    print("extraction eff GEM2 = %f" % extraction_eff_GEM2 )
+    print("extraction eff GEM3 = %f" % extraction_eff_GEM3 )
+
+    demag=opt.y_dim/opt.sensor_size
+    a=opt.camera_aperture
+    omega=1./math.pow((4*(demag+1)*a),2)   # solid angle ratio
+    #print(omega)
+
+#### CODE EXECUTION ####
     run_count=1
-    for scan_idx in range(0,scan_length):
-        params={}
-        for k, v in params_with_list.items():
-            params[k] = v[scan_idx]
-
-        for k,v in params.items():
-            setattr(opt, k, v)
-
-        ## fit from Fernando Amaro's single GEM gain measurement
-        GEM1_gain = 0.0347*np.exp((0.0209)*opt.GEM1_HV)
-        GEM2_gain = 0.0347*np.exp((0.0209)*opt.GEM2_HV)
-        GEM3_gain = 0.0347*np.exp((0.0209)*opt.GEM3_HV)
-        print("GEM1_gain = %d"%GEM1_gain)
-        print("GEM2_gain = %d"%GEM2_gain)
-        print("GEM3_gain = %d"%GEM3_gain)
-        
-        ## dividing Fernando's to Francesco&Karolina's single GEM gain measurement
-        extraction_eff_GEM1 = 0.87319885*np.exp(-0.0020000000*opt.GEM1_HV)
-        extraction_eff_GEM2 = 0.87319885*np.exp(-0.0020000000*opt.GEM2_HV)
-        extraction_eff_GEM3 = 0.87319885*np.exp(-0.0020000000*opt.GEM3_HV)
-        print("extraction eff GEM1 = %f" % extraction_eff_GEM1 )
-        print("extraction eff GEM2 = %f" % extraction_eff_GEM2 )
-        print("extraction eff GEM3 = %f" % extraction_eff_GEM3 )
-
-        demag=opt.y_dim/opt.sensor_size
-        a=opt.camera_aperture
-        omega=1./math.pow((4*(demag+1)*a),2)   # solid angle ratio
-        #print(omega)
-
-    #### CODE EXECUTION ####
-        t0=time.time()
-       
-        # UNCOMMENT THIS LINE IF YOU WANT TO STUDY THE SIMULATION WITH THE SAME STATISTICAL FLUCTUATIONS (SAME SEED): IT IS USEFUL FOR DEBUGGING
-        #np.random.seed(seed=0)
+    t0=time.time()
+   
+    # check if 'fixed seed' for random distributions (for debugging purposes)
+    if (opt.fixed_seed==True):
+        np.random.seed(seed=0)
 
 
-        eventnumber = np.array([-999], dtype="int")
-        particle_type = np.array([-999], dtype="int")
-        energy_ini = np.array([-999], dtype="float32")
-        theta_ini = np.array([-999], dtype="float32")
-        phi_ini = np.array([-999], dtype="float32")
+    eventnumber = np.array([-999], dtype="int")
+    particle_type = np.array([-999], dtype="int")
+    energy_ini = np.array([-999], dtype="float32")
+    theta_ini = np.array([-999], dtype="float32")
+    phi_ini = np.array([-999], dtype="float32")
 
-        z_ini = 0
 
-        if not os.path.exists(opt.outfolder): #CREATING OUTPUT FOLDER
-            os.makedirs(opt.outfolder)
+    if not os.path.exists(opt.outfolder): #CREATING OUTPUT FOLDER
+        os.makedirs(opt.outfolder)
+            
+    for infile in os.listdir(opt.infolder): #READING INPUT FOLDER
+            
+            if infile.endswith('.root'):    #KEEPING .ROOT FILES ONLY
                 
-        for infile in os.listdir(opt.infolder): #READING INPUT FOLDER
+                #FIXME
+                z_ini = 0.
+                rootfile=rt.TFile.Open(opt.infolder+"/"+infile)
+                tree=rootfile.Get('nTuple')            #GETTING NTUPLES
+            
+                infilename=infile[:-5]    
+                outfile=rt.TFile('%s/histograms_Run%05d.root' % (opt.outfolder,run_count), 'RECREATE') #OUTPUT NAME (only run number)
+                outfile.mkdir('event_info')
+                SaveValues(params, outfile) ## SAVE PARAMETERS OF THE RUN
+                outtree = rt.TTree("info_tree", "info_tree")
+                outtree.Branch("eventnumber", eventnumber, "eventnumber/I")
+                outtree.Branch("particle_type", particle_type, "particle_type/I")
+                outtree.Branch("energy_ini", energy_ini, "energy_ini/F")
+                outtree.Branch("theta_ini", theta_ini, "theta_ini/F")
+                outtree.Branch("phi_ini", phi_ini, "phi_ini/F")
+
+                ### saving track lenth##
+                param_tree = rt.TTree("param_tree","param_tree") #creating a tree
+
+                track_length_3D=np.empty((1),dtype="float32")
+                x_vertex=np.empty((1),dtype="float32")
+                y_vertex=np.empty((1),dtype="float32")
+                z_vertex=np.empty((1),dtype="float32")
+                x_vertex_end=np.empty((1),dtype="float32")
+                y_vertex_end=np.empty((1),dtype="float32")
+                z_vertex_end=np.empty((1),dtype="float32")
+                energy = np.empty((1),dtype="float32")
+                px = np.empty((1),dtype="float32")
+                py = np.empty((1),dtype="float32")
+                pz = np.empty((1),dtype="float32")
+                proj_track_2D= np.empty((1),dtype="float32")
+                theta = np.empty((1),dtype = "float32")
+                phi = np.empty((1),dtype = "float32")
+                nhits_og = np.empty((1),dtype = "int32")
+                xhits_og = np.empty((10000),dtype = "float32")
+                yhits_og = np.empty((10000),dtype = "float32")
+                zhits_og = np.empty((10000),dtype = "float32")
+                EDepHit_og = np.empty((10000),dtype = "float32")
+
                 
-            if opt.rootfiles==True:
-                    # code to be used with input root files from Geant
-                if infile.endswith('.root'):    #KEEPING .ROOT FILES ONLY
+                param_tree.Branch('track_length_3D',track_length_3D,"track_length_3D/F")
+                param_tree.Branch('proj_track_2D',proj_track_2D,"proj_track_2D/F")
+                param_tree.Branch('x_vertex',x_vertex,"x_vertex/F")
+                param_tree.Branch('y_vertex',y_vertex,"y_vertex/F")
+                param_tree.Branch('z_vertex',z_vertex,"z_vertex/F")
+                param_tree.Branch('x_vertex_end',x_vertex_end,"x_vertex_end/F")
+                param_tree.Branch('y_vertex_end',y_vertex_end,"y_vertex_end/F")
+                param_tree.Branch('z_vertex_end',z_vertex_end,"z_vertex_end/F")
+                param_tree.Branch('energy',energy,"energy/F")
+                param_tree.Branch('px',px,"px/F")
+                param_tree.Branch('py',py,"py/F")
+                param_tree.Branch('pz',pz,"pz/F")
+                param_tree.Branch('theta',theta,"theta/F")
+                param_tree.Branch('phi',phi,"phi/F") 
+                param_tree.Branch('nhits_og',nhits_og,"nhits_og/I")
+                param_tree.Branch('xhits_og',xhits_og,"xhits_og[nhits_og]/F")
+                param_tree.Branch('yhits_og',yhits_og,"yhits_og[nhits_og]/F")
+                param_tree.Branch('zhits_og',zhits_og,"zhits_og[nhits_og]/F")
+                param_tree.Branch('EDepHit_og',EDepHit_og,"EDepHit_og[nhits_og]/F")  
+
+
+                final_imgs=list();
+                
+                if opt.events==-1:
+                    totev=tree.GetEntries()
+                else:
+                    
+                    if opt.events<=tree.GetEntries():
+                        totev=opt.events
+                    else:
+                        totev=tree.GetEntries()
+                    
+                VignMap=rt.TH2D()
+                if(opt.Vignetting):
+                    VignFile=rt.TFile.Open('VignettingMap/'+opt.Vig_Map,'read')
+                    VignMap=VignFile.Get("normmap_lime")
+                    VignMap.Smooth
+                    print(VignMap)
+                        
+    
+                for entry in range(0, totev): #RUNNING ON ENTRIES
+                    tree.GetEntry(entry)
+
+                    print(entry)
+                    
+                    x_hits_tr = tree.x_hits
+                    y_hits_tr = tree.y_hits
+                    z_hits_tr = tree.z_hits
+
+                    
+                    # add random Z to tracks
+                    if opt.randZ:
+                        opt.z_gem=0
+                        rand = opt.randZ_min + random.random()*(opt.randZ_max-opt.randZ_min)
+                        X0= min(tree.x_hits)
+                        for ihit in range(0,tree.numhits):
+                            x_hits_tr[ihit]-=X0
+                            x_hits_tr[ihit]+=rand
+
+                    randy=0
+                    randy_pix=0
+                    randz=0
+                    randz_pix=0
+
+                    if opt.randXYPosition:
+                        randy_pix=200-random.randrange(400)
+                        randy= (randy_pix)*(opt.y_dim/opt.y_pix)
+                        randz_pix= 200-random.randrange(400)
+                        randz= (randz_pix)*(opt.x_dim/opt.x_pix)
+
+                                                   
+                    for ihit in range(0,tree.numhits):
+                        y_hits_tr[ihit]+=randy
+                        z_hits_tr[ihit]+=randz
+                        
+                        xhits_og[ihit] = x_hits_tr[ihit]
+                        yhits_og[ihit] = y_hits_tr[ihit]
+                        zhits_og[ihit] = z_hits_tr[ihit]
+
+                            
+                    eventnumber[0] = tree.eventnumber
                     
                     #FIXME
-                    z_ini = 255.
-                    zbins = int(opt.zcloud/opt.z_vox_dim)
-                    rootfile=rt.TFile.Open(opt.infolder+"/"+infile)
-                    tree=rootfile.Get('nTuple')            #GETTING NTUPLES
-                
-                    infilename=infile[:-5]    
-                    #outfile=rt.TFile('%s/histograms_Run%05d.root' % (opt.outfolder,run_count), 'RECREATE') #OUTPUT NAME (only run number)
-                    #outfile=rt.TFile('%s/histograms_%s_%d_mm_%d_V.root' % (opt.outfolder, infilename, opt.z_gem-z_ini, opt.GEM1_HV), 'RECREATE') #OUTPUT NAME WITH PARAMETERS INFO
-                    outfile=rt.TFile('%s/histograms_%s_%d_mm_%d_V_%s.root' % (opt.outfolder, infilename, opt.z_gem-z_ini, opt.GEM1_HV, time.strftime("%Y%m%d-%H%M%S") ), 'RECREATE') #OUTPUT NAME WITH PARAMETERS INFO AND TIMESTAMP
-                    outfile.mkdir('event_info')
-                    SaveValues(params, outfile) ## SAVE PARAMETERS OF THE RUN
-                    outtree = rt.TTree("info_tree", "info_tree")
-                    outtree.Branch("eventnumber", eventnumber, "eventnumber/I")
-                    outtree.Branch("particle_type", particle_type, "particle_type/I")
-                    outtree.Branch("energy_ini", energy_ini, "energy_ini/F")
-                    outtree.Branch("theta_ini", theta_ini, "theta_ini/F")
-                    outtree.Branch("phi_ini", phi_ini, "phi_ini/F")
-
-                    final_imgs=list();
-                    
-                    if opt.events==-1:
-                        totev=tree.GetEntries()
-                    else:
-                        
-                        if opt.events<=tree.GetEntries():
-                            totev=opt.events
-                        else:
-                            totev=tree.GetEntries()
-                        
-
-        
-                    for entry in range(0, totev): #RUNNING ON ENTRIES
-                        tree.GetEntry(entry)
-                        eventnumber[0] = tree.eventnumber
-                        #FIXME
-                        particle_type[0] = 0
+                    if (opt.NR==True): 
+                        proj_track_2D[0]=np.sum(np.sqrt(np.power(np.ediff1d(np.array(tree.x_hits)),2)+np.power(np.ediff1d(np.array(tree.y_hits)),2)))
+                        energy_ini[0] = tree.ekin_particle
+                        particle_type[0] = tree.particle_type
+                    else: 
+                        proj_track_2D[0]=np.sum(np.sqrt(np.power(np.ediff1d(np.array(tree.z_hits)),2)+np.power(np.ediff1d(np.array(tree.y_hits)),2)))
                         energy_ini[0] = tree.ekin_particle[0]*1000
-                        phi_ini[0] = -999.
-                        theta_ini[0] = -999.
-                        phi_ini[0] = np.arctan2( (tree.y_hits[1]-tree.y_hits[0]),(tree.z_hits[1]-tree.z_hits[0]) )
-                        theta_ini[0] = np.arccos( (tree.x_hits[1]-tree.x_hits[0]) / np.sqrt( np.power((tree.x_hits[1]-tree.x_hits[0]),2) + np.power((tree.y_hits[1]-tree.y_hits[0]),2) + np.power((tree.z_hits[1]-tree.z_hits[0]),2)) )
-                        outtree.Fill()
+                        particle_type[0] = 0
+                    phi_ini[0] = -999.
+                    theta_ini[0] = -999.
+                    phi_ini[0] = np.arctan2( (tree.y_hits[1]-tree.y_hits[0]),(tree.z_hits[1]-tree.z_hits[0]) )
+                    theta_ini[0] = np.arccos( (tree.x_hits[1]-tree.x_hits[0]) / np.sqrt( np.power((tree.x_hits[1]-tree.x_hits[0]),2) + np.power((tree.y_hits[1]-tree.y_hits[0]),2) + np.power((tree.z_hits[1]-tree.z_hits[0]),2)) )
+                    track_length_3D[0]=np.sum(np.array(tree.tracklen_hits))
+                    EDepHit_og = np.array(tree.energyDep_hits)
+                    px[0]= np.array(tree.px_particle)[0]
+                    py[0]= np.array(tree.py_particle)[0]
+                    pz[0]= np.array(tree.pz_particle)[0]
+                    x_vertex[0]= np.array(x_hits_tr)[0]
+                    y_vertex[0]= (np.array(tree.y_vertex_hits)[0]+0.5*opt.y_dim)*opt.y_pix/opt.y_dim
+                    z_vertex[0]= (np.array(tree.z_vertex_hits)[0]+0.5*opt.x_dim)*opt.x_pix/opt.x_dim
+                    x_vertex_end[0]= np.array(x_hits_tr)[-1]
+                    y_vertex_end[0]= (np.array(tree.y_vertex_hits)[-1]+0.5*opt.y_dim)*opt.y_pix/opt.y_dim
+                    z_vertex_end[0]= (np.array(tree.z_vertex_hits)[-1]+0.5*opt.x_dim)*opt.x_pix/opt.x_dim
+                    energy[0]=energy_ini[0]
+                    theta[0]=theta_ini[0]
+                    phi[0]=phi_ini[0]
+                    nhits_og[0]=tree.numhits
+                    
+
+                    outtree.Fill()
 
 
-                        
-                        ## with saturation
-                        if (opt.saturation):
 
-                            S3D_x=np.array([])
-                            S3D_y=np.array([])
-                            S3D_z=np.array([])
+                    ## with saturation
+                    if (opt.saturation):
 
-                            for ihit in range(0,tree.numhits):
-                                #print("Processing hit %d of %d"%(ihit,tree.numhits))
+                        # non-vectorized smearing
+                        #S3D_x=np.array([])
+                        #S3D_y=np.array([])
+                        #S3D_z=np.array([])
+                        #for ihit in range(0,tree.numhits):
+                        #    #print("Processing hit %d of %d"%(ihit,tree.numhits))
+                        #    ## here swapping X with Z beacuse in geant the drift axis is X
+                        #    if (opt.NR == True):
+                        #        S3D = cloud_smearing3D(x_hits_tr[ihit],tree.y_hits[ihit],tree.z_hits[ihit],tree.energyDep_hits[ihit],opt)
+                        #    else:
+                        #        S3D = cloud_smearing3D(tree.z_hits[ihit],tree.y_hits[ihit],x_hits_tr[ihit],tree.energyDep_hits[ihit],opt)
+                        #    S3D_x=np.append(S3D_x, S3D[0])
+                        #    S3D_y=np.append(S3D_y, S3D[1])
+                        #    S3D_z=np.append(S3D_z, S3D[2])
 
-                                ## here swapping X with Z beacuse in geant the drift axis is X
-                                S3D = cloud_smearing3D(tree.z_hits[ihit],tree.y_hits[ihit],tree.x_hits[ihit],tree.energyDep_hits[ihit],opt)
-
-                                S3D_x=np.append(S3D_x, S3D[0])
-                                S3D_y=np.append(S3D_y, S3D[1])
-                                S3D_z=np.append(S3D_z, S3D[2])
-
-                            # compute max and min for x,y,z. Those values define the smallest volume that contains all electrons
-                            # +/-2 is needed for electrons close to the hedge
-                            xmax=2+int(round(max( (0.5*opt.x_dim+S3D_x)*opt.x_pix/opt.x_dim))) 
-                            xmin=-2+int(round(min( (0.5*opt.x_dim+S3D_x)*opt.x_pix/opt.x_dim)))
-                            ymax=2+int(round(max( (0.5*opt.y_dim+S3D_y)*opt.y_pix/opt.y_dim) ))
-                            ymin=-2+int(round(min( (0.5*opt.y_dim+S3D_y)*opt.y_pix/opt.y_dim))) 
-                            zmax=2+int(round(max( (0.5*zbins*opt.z_vox_dim+S3D_z)/opt.z_vox_dim))) 
-                            zmin=-2+int(round(min( (0.5*zbins*opt.z_vox_dim+S3D_z)/opt.z_vox_dim)))
-
-                            #histname = "histo_cloud_pic_"+str(run_count)+"_ev"+str(int(entry)) 
-                            #histo_cloud = rt.TH3I(histname,"",opt.x_pix,0,opt.x_pix-1,opt.y_pix,0,opt.y_pix-1,zbins,0,zbins)
-                            
-                            histo_cloud_entries=np.array([(0.5*opt.x_dim+S3D_x)*opt.x_pix/opt.x_dim ,  (0.5*opt.y_dim+S3D_y)*opt.y_pix/opt.y_dim  ,  (0.5*zbins*opt.z_vox_dim+S3D_z)/opt.z_vox_dim    ]).transpose()
-                            histo_cloud, hedge = np.histogramdd(histo_cloud_entries, bins=(xmax-xmin,ymax-ymin,zmax-zmin), range=([xmin,xmax],[ymin,ymax],[zmin,zmax]), normed=None, weights=None, density=None)
-                            
-                            #print("created histo_cloud")
-                            #tot_el_G2 = 0
-                            #for j in range(0, len(S3D_x)):
-                            #    histo_cloud.Fill((0.5*opt.x_dim+S3D_x[j])*opt.x_pix/opt.x_dim, (0.5*opt.y_dim+S3D_y[j])*opt.y_pix/opt.y_dim, (0.5*zbins*opt.z_vox_dim+S3D_z[j])/opt.z_vox_dim ) 
-                            #    tot_el_G2+=1
-                               
-                            #tot_el_G2 = histo_cloud.Integral()
-                            
-                            #histo_cloud_array=rn.hist2array(histo_cloud)               # CONVERT ROOT HISTO TO NUMPY ARRAY
+                        # vectorized smearing
+                        # if ER file need to swapp X with Z beacuse in geant the drift axis is X
+                        if (opt.NR == True):
+                            S3D_x, S3D_y, S3D_z = cloud_smearing3D_vectorized(np.array(x_hits_tr),np.array(tree.y_hits),np.array(tree.z_hits),np.array(tree.energyDep_hits),opt)
+                        else:
+                            S3D_x, S3D_y, S3D_z = cloud_smearing3D_vectorized(np.array(tree.z_hits),np.array(tree.y_hits),np.array(x_hits_tr),np.array(tree.energyDep_hits),opt)
 
 
-                            # 2d map of photons applying saturation effect
-                            #result_GEM3 = Nph_saturation(histo_cloud,opt,xmin,xmax,ymin,ymax,zmin,zmax)   # SLOW SATURATION WITH 3 FOR LOOP
-                            result_GEM3 = Nph_saturation_vectorized(histo_cloud,opt)                            # FAST SATURATION WITH NUMPY
+                        # if there are no electrons on GEM3, just use empty image 
+                        if S3D_x.size == 0: 
+                           array2d_Nph = np.zeros((opt.x_pix,opt.y_pix))
+
+                        # if there are electrons on GEM3, apply saturation effect 
+                        else:
+
+                            xmax=max(S3D_x)
+                            xmin=min(S3D_x)
+                            ymax=max(S3D_y)
+                            ymin=min(S3D_y)
+                            zmax=max(S3D_z)
+                            zmin=min(S3D_z)
+
+                            # numpy histo is faster than ROOT histo
+                            histo_cloud_entries=np.array(
+                                    [S3D_x,
+                                     S3D_y , 
+                                     S3D_z]).transpose()
+
+                            xbin_dim=opt.x_vox_dim #opt.x_dim/opt.x_pix
+                            ybin_dim=opt.y_vox_dim #opt.y_dim/opt.y_pix
+                            zbin_dim=opt.z_vox_dim
+
+
+                            x_n_bin=round_up_to_even((xmax-xmin)/xbin_dim)
+                            y_n_bin=round_up_to_even((ymax-ymin)/ybin_dim)
+                            z_n_bin=round_up_to_even((zmax-zmin)/zbin_dim)
+
+                            histo_cloud, edge = np.histogramdd(
+                                    histo_cloud_entries,
+                                    bins=(x_n_bin-1, y_n_bin-1, z_n_bin-1),
+                                    range=([xmin,xmax],[ymin,ymax],[zmin,zmax]),
+                                    normed=None, weights=None, density=None)
+
+                            # apply saturation vectorized function
+                            result_GEM3 = Nph_saturation_vectorized(histo_cloud,opt)   
                             array2d_Nph = result_GEM3[1]
-                            #tot_ph_G3 = result_GEM3[0] 
                             tot_ph_G3 = np.sum(array2d_Nph)
+
+                            #x_n_bin2=round_up_to_even((xmax-xmin)/xbin_dim)
+                            #y_n_bin2=round_up_to_even((ymax-ymin)/ybin_dim)
+
+                            xmax_bin2=round((xmax)/xbin_dim)+int(opt.x_pix/2)
+                            xmin_bin2=round((xmin)/xbin_dim)+int(opt.x_pix/2)
+                            ymax_bin2=round((ymax)/ybin_dim)+int(opt.y_pix/2)
+                            ymin_bin2=round((ymin)/ybin_dim)+int(opt.y_pix/2)
+
+                            #print(ymin_bin2)
+                            #print(xmin_bin2)
+                            #print(xmax_bin2)
+                            #print(ymax_bin2)
+
+
+                            x_n_bin2=xmax_bin2-xmin_bin2
+                            y_n_bin2=ymax_bin2-ymin_bin2
+
+                            #print(x_n_bin2)
+                            #print(y_n_bin2)
+
+                            xedges2 = np.linspace(xmin, xmax, num=x_n_bin2)
+                            yedges2 = np.linspace(ymin, ymax, num=y_n_bin2)
+
+                            array2d_Nph=np.around(array2d_Nph)
+
+                            # for rebinning we are using the code in this repo: https://github.com/jhykes/rebin
+                            # not sure if we have to add an acknowledgement in the README, or do something else to respect the copyright/license 
+                            array2d_Nph = rebin2d(edge[0], edge[1], array2d_Nph, xedges2,  yedges2, interp_kind=3)  
+                            array2d_Nph=np.around(array2d_Nph)
+
+                            print(xmin_bin2+1,opt.x_pix-xmax_bin2,ymin_bin2,opt.y_pix-ymax_bin2+1)
+                            #array2d_Nph=np.pad(array2d_Nph, ( ( int((opt.x_pix-x_n_bin2)/2), int((opt.x_pix-x_n_bin2)/2+1)),  ( int((opt.y_pix-y_n_bin2)/2), int((opt.y_pix-y_n_bin2)/2+1))), 'constant', constant_values=0)   
+                            array2d_Nph=np.pad(array2d_Nph, ((xmin_bin2+1, opt.x_pix-xmax_bin2 ),  ( ymin_bin2, opt.y_pix-ymax_bin2+1)), 'constant', constant_values=0)   
+
+                            print("padding",xmin_bin2+1, opt.x_pix-xmax_bin2 ,ymin_bin2, opt.y_pix-ymax_bin2+1 )
                             
-                            # add empty block of pixels around the histo_cloud and get the dimensions of the final image
-                            array2d_Nph=np.pad(array2d_Nph, ((xmin, opt.x_pix-xmax), (ymin, opt.y_pix-ymax)), 'constant', constant_values=0)
-                               
-                            #print("tot num of sensor counts after GEM3 including saturation: %d"%(tot_ph_G3))
-                            #print("tot num of sensor counts after GEM3 without saturation: %d"%(opt.A*tot_el_G2*GEM3_gain* omega * opt.photons_per_el * opt.counts_per_photon))
-                            #print("Gain GEM3 = %f   Gain GEM3 saturated = %f"%(GEM3_gain, tot_ph_G3/(opt.A * tot_el_G2*omega * opt.photons_per_el * opt.counts_per_photon) ))   
+                        #print("tot num of sensor counts after GEM3 including saturation: %d"%(tot_ph_G3))
+                        #print("tot num of sensor counts after GEM3 without saturation: %d"%(opt.A*tot_el_G2*GEM3_gain* omega * opt.photons_per_el * opt.counts_per_photon))
+                        #print("Gain GEM3 = %f   Gain GEM3 saturated = %f"%(GEM3_gain, tot_ph_G3/(opt.A * tot_el_G2*omega * opt.photons_per_el * opt.counts_per_photon) ))   
 
-                        ## no saturation
-                        else:
-                            signal=rt.TH2I('sig_pic_run'+str(run_count)+'_ev'+str(entry), '', opt.x_pix, 0, opt.x_pix-1, opt.y_pix, 0, opt.y_pix-1) 
-                            tot_ph_G3=0
-                            for ihit in range(0,tree.numhits):
-                                ## here swapping X with Z beacuse in geant the drift axis is X
-                                S2D = ph_smearing2D(tree.z_hits[ihit],tree.y_hits[ihit],tree.x_hits[ihit],tree.energyDep_hits[ihit],opt)
-                                
-                                for t in range(0, len(S2D[0])):
-                                    tot_ph_G3+=1
-
-                                    signal.Fill((0.5*opt.x_dim+S2D[0][t])*opt.x_pix/opt.x_dim, (0.5*opt.y_dim+S2D[1][t])*opt.y_pix/opt.y_dim ) 
-                            array2d_Nph=rn.hist2array(signal)
-                            array2d_Nph = array2d_Nph 
-                            #print("tot num of sensor counts after GEM3 without saturation: %d"%(tot_ph_G3))
-
-
-                        background=AddBckg(opt,entry)
-                        total=array2d_Nph+background
-
-                        final_image=rt.TH2I('pic_run'+str(run_count)+'_ev'+str(entry), '', opt.x_pix, 0, opt.x_pix-1, opt.y_pix, 0, opt.y_pix-1) #smeared track with background
-                        final_image=rn.array2hist(total, final_image)
-                        outfile.cd()
-                        final_image.Write()            
-
-                    outfile.cd('event_info') 
-                    outtree.Write()
-                    print('COMPLETED RUN %d'%(run_count))
-                    run_count+=1
-                    #outfile.Close()
-
-            if opt.rootfiles==False:    
-                # code to be used with input txt files from SRIM
-                if infile.endswith('.txt'):    #KEEPING part.txt FILES ONLY NB: one single file with a specific name for the moment. there are other .txt files in the folder...this has to be fixed...
-
-                    textfile=open(opt.infolder+"/"+infile, "r")
-                    print("Opening file : %s" %infile )
-
-                    infilename=infile[:-4]    
-                    outfile=rt.TFile('%s/histograms_Run%05d.root' % (opt.outfolder,run_count), 'RECREATE') #OUTPUT NAME
-                    outfile.mkdir('event_info')
-                    SaveValues(params, outfile) ## SAVE PARAMETERS OF THE RUN
-                    outtree = rt.TTree("info_tree", "info_tree")
-                    outtree.Branch("eventnumber", eventnumber, "eventnumber/I")
-                    outtree.Branch("particle_type", particle_type, "particle_type/I")
-                    outtree.Branch("energy_ini", energy_ini, "energy_ini/F")
-                    outtree.Branch("theta_ini", theta_ini, "theta_ini/F")
-                    outtree.Branch("phi_ini", phi_ini, "phi_ini/F")
-
-                    final_imgs=list();
-                    zvec=list(); yvec=list(); xvec=list(); evec=list(); phiini=list(); thetaini=list(); eini=list();
-                    zvec*=0; yvec*=0; xvec*=0; evec*=0; phiini*=0; thetaini*=0; eini*=0;
-                    lastentry=0
-                    nhits=0
-                    iline=0
-                    sumene = 0
-                    sumeneQF = 0
-                    content = textfile.readlines() #READ IN TXT FILE
-                    tot_el_G2=0
-                    tot_ph_G3=0
-                    zbins = int(opt.zcloud/opt.z_vox_dim)
-
-                    histname = "histo_cloud"+str(run_count)+"_pic_0"
-                    histo_cloud = rt.TH3I(histname,"",opt.x_pix,0,opt.x_pix-1,opt.y_pix,0,opt.y_pix-1,zbins,0,zbins)
-                    signal=rt.TH2I('sig_run'+str(run_count)+'_ev0', '', opt.x_pix, 0, opt.x_pix-1, opt.y_pix, 0, opt.y_pix-1) #smeared track with background
-                    final_image=rt.TH2I('pic_run'+str(run_count)+'_ev0', '', opt.x_pix, 0, opt.x_pix-1, opt.y_pix, 0, opt.y_pix-1) #smeared track with background
-                    
-                    array2d_Nph = np.zeros((opt.x_pix,opt.y_pix))
-                    
-                    
-                    for nlines,line in enumerate(content):           #LOOP OVER LINES (HITS)
-                        #print(line)
-                        
-                        if lastentry>=opt.events and opt.events!=-1:
-                            break  #EXIT FROM LOOP OVER LINES
-                        
-                        myvars=line.split()
-                        #print(myvars)
-                        entry=int(myvars[0])-1
-                        sumene += float(myvars[5])
-                        sumeneQF += float(myvars[6])
-                        x_hit = float(myvars[2])
-                        y_hit = float(myvars[3])
-                        z_hit = float(myvars[4])
-                        energyDep_hit = float(myvars[6]) ##INCLUDE QF
-                        nhits=int(myvars[1])
-                        zvec.append(float(myvars[4]))
-                        yvec.append(float(myvars[3]))
-                        xvec.append(float(myvars[2]))
-                        evec.append(float(myvars[6]))
-                        if (len(myvars)>7):
-                            thetaini.append(float(myvars[7]))
-                            phiini.append(float(myvars[8]))
-                            eini.append(float(myvars[9]))
-
-
-                        if (np.isnan(x_hit) or np.isnan(y_hit) or np.isnan(z_hit)):
-                            continue ## SKIP LINE WITH NAN VALUES
-
-                        # SATURATION SIM
-                        if(opt.saturation):
-                            S3D = cloud_smearing3D(x_hit,y_hit,z_hit,energyDep_hit,opt)
-
-                            for j in range(0, len(S3D[0])): #LOOP OVER ELECTRONS AFTER GEM2 
-
-                                histo_cloud.Fill((0.5*opt.x_dim+S3D[0][j])*opt.x_pix/opt.x_dim, (0.5*opt.y_dim+S3D[1][j])*opt.y_pix/opt.y_dim, (0.5*opt.zcloud+S3D[2][j])*zbins/opt.zcloud )
-                                tot_el_G2+=1
-                    
-                                if (entry!=lastentry or nlines==len(content)-1 ): #NEW EVENT FOUND (OR LAST LINE IN THE FILE) - STORE INFORMATIONS ON PREVIOUS ONE
-                                    #print("tot_el_G2 = %d"%tot_el_G2)
-                    
-                                    # 2d map of photons applying saturation effect
-                                    result_GEM3 = Nph_saturation(histo_cloud,opt)
-                                    array2d_Nph = result_GEM3[1]
-                                    tot_ph_G3 = result_GEM3[0] #np.sum(array2d_Nph)
-                    
-                                    #print("tot num of sensor counts after GEM3 including saturation: %d"%(tot_ph_G3))
-                                    #print("tot num of sensor counts after GEM3 without saturation: %d"%(opt.A*tot_el_G2*GEM3_gain* omega * opt.photons_per_el * opt.counts_per_photon))
-                                    #print("Gain GEM3 = %f   Gain GEM3 saturated = %f"%(GEM3_gain, tot_ph_G3/(tot_el_G2*omega * opt.photons_per_el * opt.counts_per_photon) ))
-                    
-                                    # add background
-                                    background=AddBckg(opt,entry)
-                                    total=array2d_Nph+background
-                                    rn.array2hist(total, final_image)
-                                    
-                                    # write output file
-                                    outfile.cd()
-                                    final_image.Write()
-                                    nphot = final_image.Integral()
-                                    
-                                    # fill info_tree
-                                    eventnumber[0] = lastentry
-                                    #FIXME (particle type NR = 1, could be changed with PDG number)
-                                    particle_type[0] = 1
-                                    if len(myvars)>7:
-                                        phi_ini[0]    = phiini[entry]
-                                        theta_ini[0]  = thetaini[entry]
-                                        energy_ini[0] = eini[entry]
-                                    else:
-                                        phi_ini[0]    = -999  
-                                        theta_ini[0]  = -999 
-                                        energy_ini[0] = -999 
-
-                                    outtree.Fill()
-                                    
-                    
-                                    
-                                    print("lastentry = %d"%lastentry)
-                                    print("tot ion energy = "+str(sumene))
-                                    print("ion energy * QF = "+str(sumeneQF))
-                                    print("nphot = "+str(nphot))
-                   
-                                    # create empty histograms for new track
-                                    histname = "histo_cloud"+str(run_count)+"_pic_"+str(int(entry))
-                                    histo_cloud = rt.TH3I(histname,"",opt.x_pix,0,opt.x_pix-1,opt.y_pix,0,opt.y_pix-1,zbins,0,zbins)
-                                    final_image=rt.TH2I('pic_run'+str(run_count)+'_ev'+str(entry), '', opt.x_pix, 0, opt.x_pix-1, opt.y_pix, 0, opt.y_pix-1) #smeared track sig+bckg (if bckg ON)
-                    
-                                    
-                                    zvec*=0; yvec*=0; xvec*=0; evec*=0; phiini*=0; thetaini*=0; eini*=0; #RESET LISTS
-                                    sumene = 0.
-                                    sumeneQF = 0.
-                                    tot_el_G2 = 0
-                                    lastentry=entry #END OF THE EVENT
-                                    if lastentry>=opt.events and opt.events!=-1:
-                                        break ##EXIT FROM LOOP OVER GEM2 ELECTRONS
-
-                                ##CLOSE IF NEW EVENT/EOF    
-
-                            ## CLOSE LOOP OVER GEM2 ELECTRONS
-                        
-                        # NO SATURATION 
-                        else:
+                    ## no saturation
+                    else:
+                        signal=rt.TH2I('sig_pic_run'+str(run_count)+'_ev'+str(entry), '', opt.x_pix, 0, opt.x_pix-1, opt.y_pix, 0, opt.y_pix-1) 
+                        tot_ph_G3=0
+                        for ihit in range(0,tree.numhits):
+                            ## here swapping X with Z beacuse in geant the drift axis is X
+                            if (opt.NR==True):
+                                S2D = ph_smearing2D(x_hits_tr[ihit],tree.y_hits[ihit],tree.z_hits[ihit],tree.energyDep_hits[ihit],opt)
+                            else:
+                                S2D = ph_smearing2D(tree.z_hits[ihit],tree.y_hits[ihit],x_hits_tr[ihit],tree.energyDep_hits[ihit],opt)
                             
-                            S2D = ph_smearing2D(x_hit,y_hit,z_hit,energyDep_hit,opt)
-                                
                             for t in range(0, len(S2D[0])):
                                 tot_ph_G3+=1
 
                                 signal.Fill((0.5*opt.x_dim+S2D[0][t])*opt.x_pix/opt.x_dim, (0.5*opt.y_dim+S2D[1][t])*opt.y_pix/opt.y_dim ) 
+
+                        array2d_Nph=rn.hist2array(signal)
+                        array2d_Nph = array2d_Nph 
+                        #print("tot num of sensor counts after GEM3 without saturation: %d"%(tot_ph_G3))
+
+
+                    background=AddBckg(opt,entry)
+
+                    if(opt.Vignetting):
+                        array2d_Nph=TrackVignetting(array2d_Nph,opt.y_pix,opt.x_pix,VignMap)
+                    
+                    total=array2d_Nph+background
+
+                    final_image=rt.TH2I('pic_run'+str(run_count)+'_ev'+str(entry), '', opt.x_pix, 0, opt.x_pix-1, opt.y_pix, 0, opt.y_pix-1) #smeared track with background
+                    final_image=rn.array2hist(total, final_image)
+
+                    #final_image_crop = rt.TH2I('pic_crp_run'+str(run_count)+'_ev'+str(entry), '', 30, 1137, 1167, 30, 1137, 1167)
+                    
+                    #if(True):
+                    #    for i in range(final_image_crop.GetXaxis().GetNbins()):
+                    #        for j in range(final_image_crop.GetYaxis().GetNbins()):
+                    #            final_image_crop.SetBinContent(i,j, final_image.GetBinContent( int(final_image_crop.GetXaxis().GetBinCenter(i)) , int(final_image_crop.GetYaxis().GetBinCenter(j)) ) )
+                    #    final_image=final_image_crop
                                 
-                                if (entry!=lastentry or nlines==len(content)-1 ): #NEW EVENT FOUND (OR LAST LINE IN THE FILE) - STORE INFORMATIONS ON PREVIOUS ONE
-                    
-                                    # 2d map of photons applying saturation effect
-                                    array2d_Nph=rn.hist2array(signal)
-                                    #print("tot num of sensor counts after GEM3 without saturation: %d"%(tot_ph_G3))
-                    
-                                    background=AddBckg(opt,entry)
-                                    total=array2d_Nph+background
-                                    
-                                    rn.array2hist(total,final_image)
-                                    nphot = final_image.Integral()
+                    outfile.cd()
+                    final_image.Write()
+                    param_tree.Fill()
 
-                                    # write output file
-                                    outfile.cd()
-                                    final_image.Write()
-                                    nphot = final_image.Integral()
-                                    
-                                    # fill info_tree
-                                    eventnumber[0] = lastentry
-                                    #FIXME
-                                    particle_type[0] = 1
-                                    if len(myvars)>7:
-                                        phi_ini[0]    = phiini[entry] 
-                                        theta_ini[0]  = thetaini[entry]
-                                        energy_ini[0] = eini[entry]
-                                    else:
-                                        phi_ini[0]    = -999  
-                                        theta_ini[0]  = -999 
-                                        energy_ini[0] = -999 
+                param_tree.Write()
+                outfile.cd('event_info') 
+                outtree.Write()
+                print('COMPLETED RUN %d'%(run_count))
+                run_count+=1
+                #outfile.Close()
 
-                                    outtree.Fill()
-                                    
-                                    print("lastentry = %d"%lastentry)
-                                    print("tot ion energy = "+str(sumene))
-                                    print("ion energy * QF = "+str(sumeneQF))
-                                    print("nphot = "+str(nphot))
-                                    
-                     
-                                    # create empty histograms for new track
-                                    signal=rt.TH2I('sig_run'+str(run_count)+'_ev'+str(entry), '', opt.x_pix, 0, opt.x_pix-1, opt.y_pix, 0, opt.y_pix-1) #smeared track with background
-                                    final_image=rt.TH2I('pic_run'+str(run_count)+'_ev'+str(entry), '', opt.x_pix, 0, opt.x_pix-1, opt.y_pix, 0, opt.y_pix-1) #smeared track with background
-                                    
-                                    
-                                    zvec*=0; yvec*=0; xvec*=0; evec*=0; phiini*=0; thetaini*=0; eini*=0; #RESET LISTS
-                                    sumene = 0.
-                                    sumeneQF = 0.
-                                    tot_ph_G3 = 0
-                                    
-                                    lastentry=entry #END OF THE EVENT
-                                    if lastentry>=opt.events and opt.events!=-1:
-                                        break ##EXIT FROM LOOP OVER GEM3 PHOTONS
-
-                                ##CLOSE IF NEW EVENT/EOF    
-
-                            ## CLOSE LOOP OVER GEM3 PHOTONS
-
-
-                        ## LOOP OVER LINES (HITS)    
-                        iline+=1
-                        #if iline==1:
-                        #    print("line: "+str(iline)+"  QF avg = "+str(float(myvars[6])/float(myvars[5])))         
-                                 
-                    ## CLOSE LOOP OVER LINES (HITS)    
-                   
-                    ## CONTINUE LOOP OVER TXT FILES
-                    print('COMPLETED RUN %d'%(run_count))
-                    run_count+=1
-                    outfile.cd('event_info') 
-                    outtree.Write()
-                    #outfile.Close()
-
-
-        t1=time.time()
-        if opt.donotremove == False:
-            sw.swift_rm_root_file(opt.tmpname)
-        print('\n')
-        print('Generation took %d seconds'%(t1-t0))
-
+    t1=time.time()
+    if opt.donotremove == False:
+        sw.swift_rm_root_file(opt.tmpname)
+    print('\n')
+    print('Generation took %d seconds'%(t1-t0))
