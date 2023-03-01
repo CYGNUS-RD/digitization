@@ -22,7 +22,7 @@
 'GEM3_HV'               : 440.,      # HV of GEM3
 
 # saturation parameters
-'saturation'            : True,      # if 'True' saturation effect is applied on GEM3    
+'saturation'            : False,      # if 'True' saturation effect is applied on GEM3    
 'x_vox_dim'             : 346./2304, # x voxel size in [mm]
 'y_vox_dim'             : 346./2304, # y voxel size in [mm]
 'z_vox_dim'             : 0.1,       # z voxel size in [mm]
@@ -37,7 +37,7 @@
 
 'bckg'                  : True,      # if 'True' background is added
 'NR'                    : False,     # 'True' for NR digitization, 'False' for ER   
-'events'                : 300,       # number of events to be processed, -1 = all
+'events'                : 200,       # number of events to be processed, -1 = all
 'donotremove'           : True,      # Remove or not the file from the tmp folder
 'fixed_seed'            : False,     # If 'True' the seed of random distributions is set to 0 (for debugging purposes)
 

@@ -390,9 +390,9 @@ if __name__ == "__main__":
                     randz_pix=0
 
                     if opt.randXYPosition:
-                        randy_pix=200-random.randrange(400)
+                        randy_pix=700-random.randrange(1400)
                         randy= (randy_pix)*(opt.y_dim/opt.y_pix)
-                        randz_pix= 200-random.randrange(400)
+                        randz_pix= 700-random.randrange(1400)
                         randz= (randz_pix)*(opt.x_dim/opt.x_pix)
 
                                                    
