@@ -18,6 +18,18 @@ import csv
 
 ## FUNCTIONS DEFINITION
 
+def generate_exposure_time_map(exposure_time, options):
+    map = np.zeros((options.x_pix, options.y_pix), dtype=int)
+    T = np.random.uniform(0, exposure_time + options.readout_time)
+    if 0 < T < options.readout_time:
+        row_threshold = int(T * options.y_pix / options.readout_time)
+        map[:row_threshold, :] = 1
+    elif options.readout_time < T < exposure_time:
+        map[:, :] = 1
+    elif exposure_time < T < exposure_time + options.readout_time:
+        row_threshold = int((T - (exposure_time)) * options.y_pix / options.readout_time)
+        map[row_threshold:, :] = 1
+    return map
 
 def NelGM1_vectorized(N_ioniz_el):
     n_el_oneGEM = N_ioniz_el * 0
@@ -415,7 +427,7 @@ if __name__ == "__main__":
             outfilename = '{}/digi_{}'.format(opt.outfolder,infile)
 
             #standard: name of output file = histograms_RunRRRRR.root (R run number)
-            #outfilename = "%s/histograms_Run%05d.root" % (opt.outfolder, run_count)
+            #outfilename = "%s/histograms_Run%07d.root" % (opt.outfolder, run_count)
 
             ##for radioisotope simulation: histograms_RunZZAAANN.root (Z=atomic number, A=mass numbe$
             ##NOTE: this is a 7 digit run number, while reconstruction currently looks for 5
@@ -457,6 +469,8 @@ if __name__ == "__main__":
             #zhits_og = np.empty((10000), dtype="float32")
             #EDepHit_og = np.empty((10000), dtype="float32")
             N_photons = np.empty((1), dtype="int32")
+            row_cut = np.empty((1), dtype="int32")
+            cut_energy = np.empty((1), dtype="float32")
 
             outtree = rt.TTree("info_tree", "info_tree")
             outtree.Branch("eventnumber", eventnumber, "eventnumber/I")
@@ -483,6 +497,9 @@ if __name__ == "__main__":
             outtree.Branch("py", py, "py/F")
             outtree.Branch("pz", pz, "pz/F")
             outtree.Branch("nhits_og", nhits_og, "nhits_og/I")
+            if (opt.exposure_time_effect):
+                outtree.Branch("cut_row", row_cut, "cutYrow/I")
+                outtree.Branch("cut_energy", cut_energy, "cut_energy/F")
             #outtree.Branch("xhits_og", xhits_og, "xhits_og[nhits_og]/F")
             #outtree.Branch("yhits_og", yhits_og, "yhits_og[nhits_og]/F")
             #outtree.Branch("zhits_og", zhits_og, "zhits_og[nhits_og]/F")
@@ -503,7 +520,36 @@ if __name__ == "__main__":
                 tree.GetEntry(entry)
                 print("Entry %d of %d" % (entry, totev))#, end="\r")
                 print("Energy %d keV" % (int(tree.energyDep)))
-                if tree.energyDep>200: continue
+
+                if tree.energyDep>700: continue
+
+                row_cut[0]=-1
+                eventnumber[0] = tree.eventnumber
+                particle_type[0] = -999
+                energy[0] = 0
+                cut_energy[0] = 0
+                theta[0] = 0
+                phi[0] = 0
+                track_length_3D[0] = -1
+                proj_track_2D[0] = -1
+                x_vertex[0] = -1
+                y_vertex[0] = -1
+                z_vertex[0] = -1
+                x_vertex_end[0] = -1
+                y_vertex_end[0] = -1
+                z_vertex_end[0] = -1
+                x_min[0] = -1
+                x_max[0] = -1
+                y_min[0] = -1
+                y_max[0] = -1
+                z_min[0] = -1
+                z_max[0] = -1
+                N_photons[0] = 0
+                px[0] = 0
+                py[0] = 0
+                pz[0] = 0
+                nhits_og[0] = tree.numhits
+
                 if tree.energyDep < opt.ion_pot:
                     background = AddBckg(opt, entry)
                     total = background
@@ -535,6 +581,8 @@ if __name__ == "__main__":
                     y_hits_tr = np.array(tree.y_hits) + opt.y_offset
                     z_hits_tr = np.array(tree.x_hits) + opt.z_offset
 
+                energy_hits = np.array(tree.energyDep_hits)
+
                 # add random Z to tracks
                 if opt.randZ_range:
                     rand = (random.random() - 0.5) * (opt.randZ_range)
@@ -542,7 +590,48 @@ if __name__ == "__main__":
                         z_hits_tr[ihit] += rand
 
 
-                eventnumber[0] = tree.eventnumber
+                ##CUT TRACKS due to exposure of camera; also saving in the tree if they were cut or not
+                row_cut[0]=-1
+                randcut = np.random.uniform(0,opt.exposure_time+opt.readout_time)
+                if (opt.exposure_time_effect):
+                    if randcut<opt.readout_time: 
+                        todelete=np.argwhere(y_hits_tr < opt.y_dim * (0.5 - randcut/opt.readout_time) -3) #delete the part of the track that corresponds to sensor rows yet to be exposed (with 3mm to take into account border effects)
+                        x_hits_tr = np.delete(x_hits_tr, todelete)
+                        y_hits_tr = np.delete(y_hits_tr, todelete)
+                        z_hits_tr = np.delete(z_hits_tr, todelete)
+                        energy_hits = np.delete(energy_hits, todelete)
+                        row_cut[0] = opt.y_pix - int( randcut * opt.y_pix / opt.readout_time )
+                    elif randcut>opt.exposure_time:
+                        todelete=np.argwhere(y_hits_tr > opt.y_dim * (0.5 - ( randcut - opt.exposure_time)/opt.readout_time) +3)
+                        x_hits_tr = np.delete(x_hits_tr, todelete)
+                        y_hits_tr = np.delete(y_hits_tr, todelete)
+                        z_hits_tr = np.delete(z_hits_tr, todelete)
+                        energy_hits = np.delete(energy_hits, todelete)
+                        row_cut[0] = opt.y_pix - int( (randcut - opt.exposure_time) * opt.y_pix / opt.readout_time )
+                    cut_energy[0] = np.sum(energy_hits)
+                    print(cut_energy[0])
+                    if x_hits_tr.shape[0]==0:
+                        print('The track was completely cut')
+                        background = AddBckg(opt, entry)
+                        total = background
+                        final_image = rt.TH2I(
+                            "pic_run" + str(run_count) + "_ev" + str(entry),
+                            "",
+                            opt.x_pix,
+                            0,
+                            opt.x_pix - 1,
+                            opt.y_pix,
+                            0,
+                            opt.y_pix - 1,
+                        )  
+                        final_image = rn.array2hist(total, final_image)
+
+                        outfile.cd()
+                        final_image.Write()
+                        outtree.Fill()
+
+                        continue
+ 
                 # FIXME
                 if opt.NR == True:
                     energy[0] = tree.ekin_particle
@@ -629,20 +718,25 @@ if __name__ == "__main__":
                 ## with saturation
                 if opt.saturation:
                     array2d_Nph = compute_cmos_with_saturation(
-                        x_hits_tr, y_hits_tr, z_hits_tr, np.array(tree.energyDep_hits), opt
+                        x_hits_tr, y_hits_tr, z_hits_tr, energy_hits, opt
                     )
                 ## no saturation
                 else:
                     array2d_Nph = compute_cmos_without_saturation(
-                        x_hits_tr, y_hits_tr, z_hits_tr, np.array(tree.energyDep_hits), opt
+                        x_hits_tr, y_hits_tr, z_hits_tr, energy_hits, opt
                     )
 
                 N_photons[0] = np.sum(array2d_Nph)
+
                 background = AddBckg(opt, entry)
                 if(opt.Vignetting):
                    array2d_Nph = TrackVignetting(array2d_Nph, opt.y_pix, opt.x_pix, VignMap)
-                total = array2d_Nph + background
 
+                if (opt.exposure_time_effect):
+                    if randcut<opt.readout_time: array2d_Nph[:,:row_cut[0]]=0 
+                    elif randcut>opt.exposure_time: array2d_Nph[:,row_cut[0]:]=0
+
+                total = array2d_Nph + background
 
                 final_image = rt.TH2I(
                     "pic_run" + str(run_count) + "_ev" + str(entry),

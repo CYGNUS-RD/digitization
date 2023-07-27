@@ -1,7 +1,7 @@
 {
 ##from https://arxiv.org/pdf/2007.00608.pdf
 'diff_const_sigma0T'    : 0.1225,    # diffusion constant [mm]^2
-'diff_coeff_T'          : 0.01232,   # diffusion parameter [mm/sqrt(cm)]^2 for 1 kV
+'diff_coeff_T'          : 0.013225,   # diffusion parameter [mm/sqrt(cm)]^2 for 1 kV
 'diff_const_sigma0L'    : 0.0676,    # diffusion constant [mm]^2
 'diff_coeff_L'          : 0.00978,   # diffusion parameter [mm/sqrt(cm)]^2 for 1 kV
 
@@ -17,7 +17,7 @@
 'z_gem'                 : +8.,     # GEM z coordinate [mm] (drift distance will be (position in simulation along drift)+(z_offset)-(z_gem) )
 'tag'			: 'Data',    # Set 'Data' to download a real pedestal run 
 'noiserun'              : 99992,      # pedestal run to add as background
-'bckg_path'		: '../',   # set path to pedestal run, or leave it black if you want to download it
+'bckg_path'		: '/nfs/cygno2/users/digiambattista/CYGNO/digitization/',   # set path to pedestal run, or leave it black if you want to download it
 'ped_rand'		: True,      # if true, will extract randomly a picture from the background root file (used for run2 MC comparison)
 
 'ion_pot'               : 0.0462,    # ionization potential for He/CF4 60/40 [keV]
@@ -30,7 +30,7 @@
 'x_vox_dim'             : 346./2304.,# x voxel size in [mm]
 'y_vox_dim'             : 346./2304.,# y voxel size in [mm]
 'z_vox_dim'             : 0.1,       # z voxel size in [mm]
-'A'                     : 1.,        # free parameter (total scale factor MC/data) 
+'A'                     : 1.52,        # free parameter (total scale factor MC/data) 
 'beta'                  : 1.0e-5,    # saturation parameter
 
 # optical parameters
@@ -38,16 +38,19 @@
 'counts_per_photon'     : 2.,        # sensor conversion factor counts/photons
 'sensor_size'           : 14.976,    # sensor dimension [mm] ORCA Fusion
 'camera_aperture'       : 0.95,
+'exposure_time_effect'  : True,      # if True, it simulates the sensor cut on tracks in upper and lower part of sensor
+'exposure_time'         : 300,       # exposure time in milliseconds
+'readout_time'          : 184.4,     # readout time of the camera in ms (184.4ms for ultra quiet scan)
 
 'bckg'                  : True,      # if 'True' background is added
 'NR'                    : False,     # 'True' for NR digitization, 'False' for ER   
-'events'                : 10,       # number of events to be processed, -1 = all
+'events'                : 1000,       # number of events to be processed, -1 = all
 'donotremove'           : True,      # Remove or not the file from the tmp folder
 'fixed_seed'            : False,     # If 'True' the seed of random distributions is set to 0 (for debugging purposes)
 
 'randZ_range'           : 0.,        # Track z coordinate range [mm]. Tracks will be generated uniformly between 'z_hit+randZ_range/2' and 'z_hit-randZ_range/2'  
-'absorption_l'          : 1000.,     # absorption lenght in [mm]
+'absorption_l'          : 1400.,     # absorption lenght in [mm]
 
-'Vignetting'            : False,      #Add vignetting effect according to the MAP
+'Vignetting'            : True,      #Add vignetting effect according to the MAP
 'Vig_Map'               : "vignette_run04117.root",
 }
