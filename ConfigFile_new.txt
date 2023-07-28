@@ -17,7 +17,7 @@
 'z_gem'                 : +8.,     # GEM z coordinate [mm] (drift distance will be (position in simulation along drift)+(z_offset)-(z_gem) )
 'tag'			: 'Data',    # Set 'Data' to download a real pedestal run 
 'noiserun'              : 99992,      # pedestal run to add as background
-'bckg_path'		: '/nfs/cygno2/users/digiambattista/CYGNO/digitization/',   # set path to pedestal run, or leave it black if you want to download it
+'bckg_path'		: '../',   # set path to pedestal run, or leave it black if you want to download it
 'ped_rand'		: True,      # if true, will extract randomly a picture from the background root file (used for run2 MC comparison)
 
 'ion_pot'               : 0.0462,    # ionization potential for He/CF4 60/40 [keV]
