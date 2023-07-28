@@ -522,13 +522,13 @@ if __name__ == "__main__":
                 print("Entry %d of %d" % (entry, totev))#, end="\r")
                 print("Energy %d keV" % (int(tree.energyDep)))
 
-                if tree.energyDep>700: continue
+                if tree.energyDep>800: continue
 
                 row_cut[0]=-1
                 eventnumber[0] = tree.eventnumber
                 particle_type[0] = -999
-                energy[0] = 0
-                cut_energy[0] = 0
+                energy[0] = tree.energyDep
+                cut_energy[0] = -1
                 theta[0] = 0
                 phi[0] = 0
                 track_length_3D[0] = -1
@@ -591,26 +591,23 @@ if __name__ == "__main__":
                         z_hits_tr[ihit] += rand
 
 
-                ##CUT TRACKS due to exposure of camera; also saving in the tree if they were cut or not
-                row_cut[0]=-1
+                ##CUT TRACKS due to exposure of camera
                 randcut = np.random.uniform(0,opt.exposure_time+opt.readout_time)
                 if (opt.exposure_time_effect):
                     if randcut<opt.readout_time: 
-                        todelete=np.argwhere(y_hits_tr < opt.y_dim * (0.5 - randcut/opt.readout_time) -3) #delete the part of the track that corresponds to sensor rows yet to be exposed (with 3mm to take into account border effects)
+                        todelete = np.argwhere(y_hits_tr < opt.y_dim * (0.5 - randcut/opt.readout_time) -3)
                         x_hits_tr = np.delete(x_hits_tr, todelete)
                         y_hits_tr = np.delete(y_hits_tr, todelete)
                         z_hits_tr = np.delete(z_hits_tr, todelete)
                         energy_hits = np.delete(energy_hits, todelete)
                         row_cut[0] = opt.y_pix - int( randcut * opt.y_pix / opt.readout_time )
                     elif randcut>opt.exposure_time:
-                        todelete=np.argwhere(y_hits_tr > opt.y_dim * (0.5 - ( randcut - opt.exposure_time)/opt.readout_time) +3)
+                        todelete = np.argwhere(y_hits_tr > opt.y_dim * (0.5 - (randcut - opt.exposure_time)/opt.readout_time) +3)
                         x_hits_tr = np.delete(x_hits_tr, todelete)
                         y_hits_tr = np.delete(y_hits_tr, todelete)
                         z_hits_tr = np.delete(z_hits_tr, todelete)
                         energy_hits = np.delete(energy_hits, todelete)
                         row_cut[0] = opt.y_pix - int( (randcut - opt.exposure_time) * opt.y_pix / opt.readout_time )
-                    cut_energy[0] = np.sum(energy_hits)
-                    print(cut_energy[0])
                     if x_hits_tr.shape[0]==0:
                         print('The track was completely cut')
                         background = AddBckg(opt, entry)
@@ -632,7 +629,71 @@ if __name__ == "__main__":
                         outtree.Fill()
 
                         continue
- 
+
+
+                ## with saturation
+                if opt.saturation:
+                    array2d_Nph = compute_cmos_with_saturation(
+                        x_hits_tr, y_hits_tr, z_hits_tr, energy_hits, opt
+                    )
+                ## no saturation
+                else:
+                    array2d_Nph = compute_cmos_without_saturation(
+                        x_hits_tr, y_hits_tr, z_hits_tr, energy_hits, opt
+                    )
+
+                N_photons[0] = np.sum(array2d_Nph)
+
+                background = AddBckg(opt, entry)
+                if(opt.Vignetting):
+                   array2d_Nph = TrackVignetting(array2d_Nph, opt.y_pix, opt.x_pix, VignMap)
+
+                if (opt.exposure_time_effect):
+                    if randcut<opt.readout_time: array2d_Nph[:,:row_cut[0]]=0 
+                    elif randcut>opt.exposure_time: array2d_Nph[:,row_cut[0]:]=0
+
+                total = array2d_Nph + background
+
+                final_image = rt.TH2I(
+                    "pic_run" + str(run_count) + "_ev" + str(entry),
+                    "",
+                    opt.x_pix,
+                    0,
+                    opt.x_pix - 1,
+                    opt.y_pix,
+                    0,
+                    opt.y_pix - 1,
+                )  # smeared track with background
+                final_image = rn.array2hist(total, final_image)
+
+
+                #Cut again the hits to save the effective length and energy which is visible in the final image
+                if (opt.exposure_time_effect):
+                    if randcut<opt.readout_time: 
+                        todelete = np.argwhere(y_hits_tr < opt.y_dim * (0.5 - randcut/opt.readout_time))
+                        x_hits_tr = np.delete(x_hits_tr, todelete)
+                        y_hits_tr = np.delete(y_hits_tr, todelete)
+                        z_hits_tr = np.delete(z_hits_tr, todelete)
+                        energy_hits = np.delete(energy_hits, todelete)
+                    elif randcut>opt.exposure_time:
+                        todelete = np.argwhere(y_hits_tr > opt.y_dim * (0.5 - (randcut - opt.exposure_time)/opt.readout_time))
+                        x_hits_tr = np.delete(x_hits_tr, todelete)
+                        y_hits_tr = np.delete(y_hits_tr, todelete)
+                        z_hits_tr = np.delete(z_hits_tr, todelete)
+                        energy_hits = np.delete(energy_hits, todelete)
+                    cut_energy[0] = np.sum(energy_hits) 
+                    if x_hits_tr.shape[0]==0:
+                        cut_energy[0]=0
+                        print('The track was completely cut')
+                        outfile.cd()
+                        final_image.Write()
+                        outtree.Fill()
+
+                        continue
+
+
+                ####Compute variables to be saved in the tree
+
                 # FIXME
                 if opt.NR == True:
                     energy[0] = tree.ekin_particle
@@ -677,28 +738,28 @@ if __name__ == "__main__":
                 pz[0] = np.array(tree.pz_particle)[0]
 
                 x_vertex[0] = (
-                    (np.array(x_hits_tr)[0] + 0.5 * opt.x_dim)
+                    (x_hits_tr[0] + 0.5 * opt.x_dim)
                     * opt.x_pix
                     / opt.x_dim
                 ) #in pixels
                 y_vertex[0] = (
-                    (np.array(y_hits_tr)[0] + 0.5 * opt.y_dim)
+                    (y_hits_tr[0] + 0.5 * opt.y_dim)
                     * opt.y_pix
                     / opt.y_dim
                 ) #in pixels
-                z_vertex[0] = abs(np.array(z_hits_tr)[0]-opt.z_gem) #distance from GEMs in mm
+                z_vertex[0] = abs(z_hits_tr[0]-opt.z_gem) #distance from GEMs in mm
 
                 x_vertex_end[0] = (
-                    (np.array(x_hits_tr)[-1] + 0.5 * opt.x_dim)
+                    (x_hits_tr[-1] + 0.5 * opt.x_dim)
                     * opt.x_pix
                     / opt.x_dim
                 ) #in pixels
                 y_vertex_end[0] = (
-                    (np.array(y_hits_tr)[-1] + 0.5 * opt.y_dim)
+                    (y_hits_tr[-1] + 0.5 * opt.y_dim)
                     * opt.y_pix
                     / opt.y_dim
                 ) #in pixels
-                z_vertex_end[0] = abs(np.array(z_hits_tr)[-1]-opt.z_gem) #distance from GEMs in mm
+                z_vertex_end[0] = abs(z_hits_tr[-1]-opt.z_gem) #distance from GEMs in mm
 
                 x_min[0] = (np.min(x_hits_tr) + 0.5*opt.x_dim)*opt.x_pix/opt.x_dim
                 x_max[0] = (np.max(x_hits_tr) + 0.5*opt.x_dim)*opt.x_pix/opt.x_dim
@@ -709,47 +770,10 @@ if __name__ == "__main__":
 
                 nhits_og[0] = tree.numhits
 
-                #outtree.Fill()
-
                 #xhits_og = np.array(x_hits_tr) + opt.x_offset
                 #yhits_og = np.array(tree.y_hits) + opt.y_offset
                 #zhits_og = np.array(tree.z_hits) + opt.z_offset
                 #EDepHit_og = np.array(tree.energyDep_hits)
-
-                ## with saturation
-                if opt.saturation:
-                    array2d_Nph = compute_cmos_with_saturation(
-                        x_hits_tr, y_hits_tr, z_hits_tr, energy_hits, opt
-                    )
-                ## no saturation
-                else:
-                    array2d_Nph = compute_cmos_without_saturation(
-                        x_hits_tr, y_hits_tr, z_hits_tr, energy_hits, opt
-                    )
-
-                N_photons[0] = np.sum(array2d_Nph)
-
-                background = AddBckg(opt, entry)
-                if(opt.Vignetting):
-                   array2d_Nph = TrackVignetting(array2d_Nph, opt.y_pix, opt.x_pix, VignMap)
-
-                if (opt.exposure_time_effect):
-                    if randcut<opt.readout_time: array2d_Nph[:,:row_cut[0]]=0 
-                    elif randcut>opt.exposure_time: array2d_Nph[:,row_cut[0]:]=0
-
-                total = array2d_Nph + background
-
-                final_image = rt.TH2I(
-                    "pic_run" + str(run_count) + "_ev" + str(entry),
-                    "",
-                    opt.x_pix,
-                    0,
-                    opt.x_pix - 1,
-                    opt.y_pix,
-                    0,
-                    opt.y_pix - 1,
-                )  # smeared track with background
-                final_image = rn.array2hist(total, final_image)
 
                 outtree.Fill()
 
