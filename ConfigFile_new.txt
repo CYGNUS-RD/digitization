@@ -44,7 +44,8 @@
 
 'bckg'                  : True,      # if 'True' background is added
 'NR'                    : False,     # 'True' for NR digitization, 'False' for ER   
-'events'                : 1000,       # number of events to be processed, -1 = all
+'start_event'           : 0,         # first entry number to start from (events processed from start_event to events); if omitted start_event=0
+'events'                : 30,       # number of events to be processed, -1 = all
 'donotremove'           : True,      # Remove or not the file from the tmp folder
 'fixed_seed'            : False,     # If 'True' the seed of random distributions is set to 0 (for debugging purposes)
 

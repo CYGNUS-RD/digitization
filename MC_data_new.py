@@ -18,19 +18,6 @@ import csv
 
 ## FUNCTIONS DEFINITION
 
-def generate_exposure_time_map(exposure_time, options):
-    map = np.zeros((options.x_pix, options.y_pix), dtype=int)
-    T = np.random.uniform(0, exposure_time + options.readout_time)
-    if 0 < T < options.readout_time:
-        row_threshold = int(T * options.y_pix / options.readout_time)
-        map[:row_threshold, :] = 1
-    elif options.readout_time < T < exposure_time:
-        map[:, :] = 1
-    elif exposure_time < T < exposure_time + options.readout_time:
-        row_threshold = int((T - (exposure_time)) * options.y_pix / options.readout_time)
-        map[row_threshold:, :] = 1
-    return map
-
 def NelGM1_vectorized(N_ioniz_el):
     n_el_oneGEM = N_ioniz_el * 0
     if isinstance(N_ioniz_el, int):  # in case there is onyl one hit (very low energy)
@@ -424,11 +411,11 @@ if __name__ == "__main__":
             infilename = infile[:-5]
 
             #name of output file = digi_<name_of_input_file>
-            #outfilename = '{}/digi_{}'.format(opt.outfolder,infile)
+            outfilename = '{}/digi_{}'.format(opt.outfolder,infile)
 
             #standard: name of output file = histograms_RunRRRRR.root (R run number)
 
-            outfilename = "%s/histograms_Run%05d.root" % (opt.outfolder, run_count)
+            #outfilename = "%s/histograms_Run%05d.root" % (opt.outfolder, run_count)
 
             ##for radioisotope simulation: histograms_RunZZAAANN.root (Z=atomic number, A=mass numbe$
             ##NOTE: this is a 7 digit run number, while reconstruction currently looks for 5
@@ -436,6 +423,10 @@ if __name__ == "__main__":
             #    outfilename = '%s/histograms_Run%05d%02d.root' % (opt.outfolder,dict_isotopes[str(infile.split("_")[1].split(".")[0])],int(infilename.split('part')[1]))
             #elif opt.GEANT4isotopes and infilename.find('part')==-1: 
             #    outfilename='%s/histograms_Run%05d00.root' % (opt.outfolder,dict_isotopes[str(infile.split("_")[1].split(".")[0])])
+
+            if 'start_event' in params.keys(): 
+                if not os.path.exists("%s/%s/"%(opt.outfolder,infilename)): os.makedirs("%s/%s/"%(opt.outfolder,infilename))
+                outfilename = "%s/%s/histograms_Run%05d.root" % (opt.outfolder, infilename, opt.start_event)
 
             outfile = rt.TFile(outfilename, "RECREATE") 
 
@@ -470,8 +461,16 @@ if __name__ == "__main__":
             #zhits_og = np.empty((10000), dtype="float32")
             #EDepHit_og = np.empty((10000), dtype="float32")
             N_photons = np.empty((1), dtype="int32")
+            N_photons_cut =  np.empty((1), dtype="int32")
             row_cut = np.empty((1), dtype="int32")
             cut_energy = np.empty((1), dtype="float32")
+            x_min_cut = np.empty((1), dtype="float32")
+            x_max_cut = np.empty((1), dtype="float32")
+            y_min_cut = np.empty((1), dtype="float32")
+            y_max_cut = np.empty((1), dtype="float32")
+            z_min_cut = np.empty((1), dtype="float32")
+            z_max_cut = np.empty((1), dtype="float32")
+            proj_track_2D_cut = np.empty((1), dtype="float32")
 
             outtree = rt.TTree("info_tree", "info_tree")
             outtree.Branch("eventnumber", eventnumber, "eventnumber/I")
@@ -481,6 +480,7 @@ if __name__ == "__main__":
             outtree.Branch("phi", phi, "phi/F")
             outtree.Branch("track_length_3D", track_length_3D, "track_length_3D/F")
             outtree.Branch("proj_track_2D", proj_track_2D, "proj_track_2D/F")
+            outtree.Branch("N_photons", N_photons, "N_photons/I")
             outtree.Branch("x_vertex", x_vertex, "x_vertex/F")
             outtree.Branch("y_vertex", y_vertex, "y_vertex/F")
             outtree.Branch("z_vertex", z_vertex, "z_vertex/F")
@@ -493,14 +493,21 @@ if __name__ == "__main__":
             outtree.Branch("y_max", y_max, "y_max/F")
             outtree.Branch("z_min", z_min, "z_min/F")
             outtree.Branch("z_max", z_max, "z_max/F")
-            outtree.Branch("N_photons", N_photons, "N_photons/I")
-            outtree.Branch("px", px, "px/F")
-            outtree.Branch("py", py, "py/F")
-            outtree.Branch("pz", pz, "pz/F")
+            #outtree.Branch("px", px, "px/F")
+            #outtree.Branch("py", py, "py/F")
+            #outtree.Branch("pz", pz, "pz/F")
             outtree.Branch("nhits_og", nhits_og, "nhits_og/I")
             if (opt.exposure_time_effect):
-                outtree.Branch("cut_row", row_cut, "cutYrow/I")
-                outtree.Branch("cut_energy", cut_energy, "cut_energy/F")
+                outtree.Branch("row_cut", row_cut, "row_cut/I")
+                outtree.Branch("energy_cut", cut_energy, "energy_cut/F")
+                outtree.Branch("N_photons_cut", N_photons_cut, "N_photons_cut/I")
+                outtree.Branch("x_min_cut", x_min_cut, "x_min_cut/F")
+                outtree.Branch("x_max_cut", x_max_cut, "x_max_cut/F")
+                outtree.Branch("y_min_cut", y_min_cut, "y_min_cut/F")
+                outtree.Branch("y_max_cut", y_max_cut, "y_max_cut/F")
+                outtree.Branch("z_min_cut", z_min_cut, "z_min_cut/F")
+                outtree.Branch("z_max_cut", z_max_cut, "z_max_cut/F")
+                outtree.Branch("proj_track_2D_cut", proj_track_2D_cut, "proj_track_2D_cut/F")
             #outtree.Branch("xhits_og", xhits_og, "xhits_og[nhits_og]/F")
             #outtree.Branch("yhits_og", yhits_og, "yhits_og[nhits_og]/F")
             #outtree.Branch("zhits_og", zhits_og, "zhits_og[nhits_og]/F")
@@ -509,6 +516,8 @@ if __name__ == "__main__":
             max_events = tree.GetEntries()
             totev = max_events if opt.events == -1 else opt.events
             totev = min(totev, max_events)
+            if 'start_event' in params.keys(): firstentry = opt.start_event
+            else: firstentry=0
 
             VignMap=rt.TH2D()
             if(opt.Vignetting):
@@ -517,17 +526,28 @@ if __name__ == "__main__":
                 VignMap.Smooth
                 print(VignMap)
 
-            for entry in range(totev):  # RUNNING ON ENTRIES
+            for entry in range(firstentry,totev):  # RUNNING ON ENTRIES
                 tree.GetEntry(entry)
                 print("Entry %d of %d" % (entry, totev))#, end="\r")
                 print("Energy %d keV" % (int(tree.energyDep)))
 
-                if tree.energyDep>800: continue
+                if tree.energyDep>100: continue
 
+                #initialize array values - to save info also if the track is skipped (background only)
                 row_cut[0]=-1
                 eventnumber[0] = tree.eventnumber
-                particle_type[0] = -999
-                energy[0] = tree.energyDep
+                # FIXME
+                if opt.NR == True:
+                    energy[0] = tree.ekin_particle
+                    particle_type[0] = tree.particle_type
+                else:
+                    ##this would be the energy of the primary particle - equal to deposited energy only if it is completely contained in the sensitive volume
+                    #energy[0] = tree.ekin_particle[0] * 1000
+                    energy[0] = tree.energyDep
+                    if tree.energyDep_NR>0: particle_type[0]=is_NR(np.array(tree.pdgID_hits),int(1e9))
+                    else: particle_type[0]=tree.pdgID_hits[0] #this will tell us if the deposit was started by a photon or an electron
+                #particle_type[0] = -999
+                #energy[0] = -1
                 cut_energy[0] = -1
                 theta[0] = 0
                 phi[0] = 0
@@ -546,12 +566,21 @@ if __name__ == "__main__":
                 z_min[0] = -1
                 z_max[0] = -1
                 N_photons[0] = 0
+                x_min_cut[0] = -1
+                x_max_cut[0] = -1
+                y_min_cut[0] = -1
+                y_max_cut[0] = -1
+                z_min_cut[0] = -1
+                z_max_cut[0] = -1
+                N_photons_cut[0] = 0
+                proj_track_2D_cut[0] = -1
                 px[0] = 0
                 py[0] = 0
                 pz[0] = 0
                 nhits_og[0] = tree.numhits
 
                 if tree.energyDep < opt.ion_pot:
+                    energy[0] = 0
                     background = AddBckg(opt, entry)
                     total = background
                     final_image = rt.TH2I(
@@ -589,6 +618,45 @@ if __name__ == "__main__":
                     rand = (random.random() - 0.5) * (opt.randZ_range)
                     for ihit in range(0, tree.numhits):
                         z_hits_tr[ihit] += rand
+
+                ##Compute length and extremes of the track before the cut
+                proj_track_2D[0] = np.sum(
+                    np.sqrt(
+                        np.power(np.ediff1d(x_hits_tr), 2)
+                        + np.power(np.ediff1d(y_hits_tr), 2)
+                    )
+                )
+                
+                x_vertex[0] = (
+                    (x_hits_tr[0] + 0.5 * opt.x_dim)
+                    * opt.x_pix
+                    / opt.x_dim
+                ) #in pixels
+                y_vertex[0] = (
+                    (y_hits_tr[0] + 0.5 * opt.y_dim)
+                    * opt.y_pix
+                    / opt.y_dim
+                ) #in pixels
+                z_vertex[0] = abs(z_hits_tr[0]-opt.z_gem) #distance from GEMs in mm
+
+                x_vertex_end[0] = (
+                    (x_hits_tr[-1] + 0.5 * opt.x_dim)
+                    * opt.x_pix
+                    / opt.x_dim
+                ) #in pixels
+                y_vertex_end[0] = (
+                    (y_hits_tr[-1] + 0.5 * opt.y_dim)
+                    * opt.y_pix
+                    / opt.y_dim
+                ) #in pixels
+                z_vertex_end[0] = abs(z_hits_tr[-1]-opt.z_gem) #distance from GEMs in mm
+                
+                x_min[0] = (np.min(x_hits_tr) + 0.5*opt.x_dim)*opt.x_pix/opt.x_dim
+                x_max[0] = (np.max(x_hits_tr) + 0.5*opt.x_dim)*opt.x_pix/opt.x_dim
+                y_min[0] = (np.min(y_hits_tr) + 0.5*opt.y_dim)*opt.y_pix/opt.y_dim
+                y_max[0] = (np.max(y_hits_tr) + 0.5*opt.y_dim)*opt.y_pix/opt.y_dim
+                z_min[0] = min(abs(np.max(z_hits_tr) - opt.z_gem),abs(np.min(z_hits_tr) - opt.z_gem))
+                z_max[0] = max(abs(np.max(z_hits_tr) - opt.z_gem),abs(np.min(z_hits_tr) - opt.z_gem))
 
 
                 ##CUT TRACKS due to exposure of camera
@@ -642,15 +710,16 @@ if __name__ == "__main__":
                         x_hits_tr, y_hits_tr, z_hits_tr, energy_hits, opt
                     )
 
-                N_photons[0] = np.sum(array2d_Nph)
+                N_photons[0] = np.sum(array2d_Nph) #Integral of the track - if opt.exposure_effect, it's computed anyway after the cut on the original hits (to save time we digitize only the part that will be visible)
 
                 background = AddBckg(opt, entry)
                 if(opt.Vignetting):
                    array2d_Nph = TrackVignetting(array2d_Nph, opt.y_pix, opt.x_pix, VignMap)
 
-                if (opt.exposure_time_effect):
+                if (opt.exposure_time_effect): #cut the track post-smearing
                     if randcut<opt.readout_time: array2d_Nph[:,:row_cut[0]]=0 
                     elif randcut>opt.exposure_time: array2d_Nph[:,row_cut[0]:]=0
+                    N_photons_cut[0] = np.sum(array2d_Nph) #integral after camera exposure cut
 
                 total = array2d_Nph + background
 
@@ -667,24 +736,31 @@ if __name__ == "__main__":
                 final_image = rn.array2hist(total, final_image)
 
 
-                #Cut again the hits to save the effective length and energy which is visible in the final image
+                #Cut again the hits to save the effective length and energy which is visible in the final image,
+                #and compute the number of photons post-cut
                 if (opt.exposure_time_effect):
-                    if randcut<opt.readout_time: 
+
+                    if randcut<opt.readout_time:
+ 
                         todelete = np.argwhere(y_hits_tr < opt.y_dim * (0.5 - randcut/opt.readout_time))
                         x_hits_tr = np.delete(x_hits_tr, todelete)
                         y_hits_tr = np.delete(y_hits_tr, todelete)
                         z_hits_tr = np.delete(z_hits_tr, todelete)
                         energy_hits = np.delete(energy_hits, todelete)
+
                     elif randcut>opt.exposure_time:
+
                         todelete = np.argwhere(y_hits_tr > opt.y_dim * (0.5 - (randcut - opt.exposure_time)/opt.readout_time))
                         x_hits_tr = np.delete(x_hits_tr, todelete)
                         y_hits_tr = np.delete(y_hits_tr, todelete)
                         z_hits_tr = np.delete(z_hits_tr, todelete)
                         energy_hits = np.delete(energy_hits, todelete)
+
                     cut_energy[0] = np.sum(energy_hits) 
+
                     if x_hits_tr.shape[0]==0:
                         cut_energy[0]=0
-                        print('The track was completely cut')
+                        print('The track was completely cut after smearing')
                         outfile.cd()
                         final_image.Write()
                         outtree.Fill()
@@ -694,20 +770,7 @@ if __name__ == "__main__":
 
                 ####Compute variables to be saved in the tree
 
-                # FIXME
-                if opt.NR == True:
-                    energy[0] = tree.ekin_particle
-                    particle_type[0] = tree.particle_type
-                else:
-                    ##this would be the energy of the primary particle - equal to deposited energy only if it is completely contained in the sensitive volume
-                    #energy[0] = tree.ekin_particle[0] * 1000
-                    energy[0] = tree.energyDep
-                    #particle_type[0] = 0
-                    if tree.energyDep_NR>0: particle_type[0]=is_NR(np.array(tree.pdgID_hits),int(1e9))
-                    else: particle_type[0]=tree.pdgID_hits[0] #this will tell us if the deposit was started by a photon or an electron
-
-
-                proj_track_2D[0] = np.sum(
+                proj_track_2D_cut[0] = np.sum(
                     np.sqrt(
                         np.power(np.ediff1d(x_hits_tr), 2)
                         + np.power(np.ediff1d(y_hits_tr), 2)
@@ -737,36 +800,12 @@ if __name__ == "__main__":
                 py[0] = np.array(tree.py_particle)[0]
                 pz[0] = np.array(tree.pz_particle)[0]
 
-                x_vertex[0] = (
-                    (x_hits_tr[0] + 0.5 * opt.x_dim)
-                    * opt.x_pix
-                    / opt.x_dim
-                ) #in pixels
-                y_vertex[0] = (
-                    (y_hits_tr[0] + 0.5 * opt.y_dim)
-                    * opt.y_pix
-                    / opt.y_dim
-                ) #in pixels
-                z_vertex[0] = abs(z_hits_tr[0]-opt.z_gem) #distance from GEMs in mm
-
-                x_vertex_end[0] = (
-                    (x_hits_tr[-1] + 0.5 * opt.x_dim)
-                    * opt.x_pix
-                    / opt.x_dim
-                ) #in pixels
-                y_vertex_end[0] = (
-                    (y_hits_tr[-1] + 0.5 * opt.y_dim)
-                    * opt.y_pix
-                    / opt.y_dim
-                ) #in pixels
-                z_vertex_end[0] = abs(z_hits_tr[-1]-opt.z_gem) #distance from GEMs in mm
-
-                x_min[0] = (np.min(x_hits_tr) + 0.5*opt.x_dim)*opt.x_pix/opt.x_dim
-                x_max[0] = (np.max(x_hits_tr) + 0.5*opt.x_dim)*opt.x_pix/opt.x_dim
-                y_min[0] = (np.min(y_hits_tr) + 0.5*opt.y_dim)*opt.y_pix/opt.y_dim
-                y_max[0] = (np.max(y_hits_tr) + 0.5*opt.y_dim)*opt.y_pix/opt.y_dim
-                z_min[0] = min(abs(np.max(z_hits_tr) - opt.z_gem),abs(np.min(z_hits_tr) - opt.z_gem))
-                z_max[0] = max(abs(np.max(z_hits_tr) - opt.z_gem),abs(np.min(z_hits_tr) - opt.z_gem))
+                x_min_cut[0] = (np.min(x_hits_tr) + 0.5*opt.x_dim)*opt.x_pix/opt.x_dim
+                x_max_cut[0] = (np.max(x_hits_tr) + 0.5*opt.x_dim)*opt.x_pix/opt.x_dim
+                y_min_cut[0] = (np.min(y_hits_tr) + 0.5*opt.y_dim)*opt.y_pix/opt.y_dim
+                y_max_cut[0] = (np.max(y_hits_tr) + 0.5*opt.y_dim)*opt.y_pix/opt.y_dim
+                z_min_cut[0] = min(abs(np.max(z_hits_tr) - opt.z_gem),abs(np.min(z_hits_tr) - opt.z_gem))
+                z_max_cut[0] = max(abs(np.max(z_hits_tr) - opt.z_gem),abs(np.min(z_hits_tr) - opt.z_gem))
 
                 nhits_og[0] = tree.numhits
 
@@ -790,3 +829,4 @@ if __name__ == "__main__":
         sw.swift_rm_root_file(opt.tmpname)
 
     print("\nGeneration took %d seconds" % (time.time() - t0))
+
